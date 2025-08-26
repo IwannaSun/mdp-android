@@ -97,7 +97,6 @@ class MainActivity : ComponentActivity() {
         btnSend.setOnClickListener { onSendClicked() }
         btnClear.setOnClickListener { onClearClicked() }
 
-        updateStatus("Idle")
     }
 
     override fun onDestroy() {
@@ -366,28 +365,41 @@ class MainActivity : ComponentActivity() {
     private fun connectWithBondCheck(device: BluetoothDevice) {
         pendingDevice = device
 
-        when (device.bondState) {
-            BluetoothDevice.BOND_BONDED -> {
-                // Already paired, connect directly
-                appendLog("[Bond] Device already paired, connecting...")
-                connectToDevice(device)
-            }
-            BluetoothDevice.BOND_NONE -> {
-                // Not paired, initiate pairing first
-                registerBondStateReceiver()
-                appendLog("[Bond] Starting pairing with ${safeDeviceName(device)}")
-                try {
-                    device.createBond()
-                } catch (e: Exception) {
-                    appendLog("[Bond] Failed: ${e.message}")
-                    toast("Pairing failed: ${e.message}")
+        // Check permission first
+        if (!hasBtConnectPermission()) {
+            appendLog("[Bond] Missing BLUETOOTH_CONNECT permission")
+            toast("Bluetooth connect permission required")
+            requestAllPermissions()
+            return
+        }
+
+        try {
+            when (device.bondState) {
+                BluetoothDevice.BOND_BONDED -> {
+                    // Already paired, connect directly
+                    appendLog("[Bond] Device already paired, connecting...")
+                    connectToDevice(device)
+                }
+                BluetoothDevice.BOND_NONE -> {
+                    // Not paired, initiate pairing first
+                    registerBondStateReceiver()
+                    appendLog("[Bond] Starting pairing with ${safeDeviceName(device)}")
+                    try {
+                        device.createBond()
+                    } catch (e: Exception) {
+                        appendLog("[Bond] Failed: ${e.message}")
+                        toast("Pairing failed: ${e.message}")
+                    }
+                }
+                BluetoothDevice.BOND_BONDING -> {
+                    // Pairing in progress, wait for result
+                    registerBondStateReceiver()
+                    appendLog("[Bond] Pairing in progress...")
                 }
             }
-            BluetoothDevice.BOND_BONDING -> {
-                // Pairing in progress, wait for result
-                registerBondStateReceiver()
-                appendLog("[Bond] Pairing in progress...")
-            }
+        } catch (se: SecurityException) {
+            appendLog("[Bond] Permission error: ${se.message}")
+            toast("Permission error: ${se.message}")
         }
     }
 
