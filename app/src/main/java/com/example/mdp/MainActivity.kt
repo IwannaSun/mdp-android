@@ -27,7 +27,7 @@ class MainActivity : ComponentActivity() {
 
     private val sppUuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
-
+    private var devicePickerDialog: AlertDialog? = null
     private var bluetoothSocket: BluetoothSocket? = null
     private var readJob: Job? = null
     private var connectJob: Job? = null
@@ -195,9 +195,11 @@ class MainActivity : ComponentActivity() {
         discoveredDevices.clear()
 
         val items = ArrayList<String>()
+        val localAddress = bluetoothAdapter?.address
         for (device in bondedDevicesSafe()) {
             val name = safeDeviceName(device)
             val address = device.address ?: "UNKNOWN"
+            if (localAddress != null && address == localAddress) continue
             val key = "$name\n$address"
             discoveredDevices[key] = device
             items.add(key)
@@ -206,42 +208,64 @@ class MainActivity : ComponentActivity() {
         val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, items)
         currentListAdapter = adapter
 
+        val dialogView = layoutInflater.inflate(R.layout.dialog_device_picker, null)
+        val listView = dialogView.findViewById<ListView>(R.id.deviceListView)
+        val btnScan = dialogView.findViewById<Button>(R.id.btnScan)
+        listView.adapter = adapter
+
         val builder = AlertDialog.Builder(this)
             .setTitle("Select Bluetooth Device")
-            .setAdapter(adapter) { dialog, which ->
-                val key = adapter.getItem(which) ?: return@setAdapter
-                val device = discoveredDevices[key] ?: return@setAdapter
+            .setView(dialogView)
+            .setNegativeButton("Cancel") { dialog, _ ->
                 dialog.dismiss()
-                connectToDevice(device)
-            }
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Scan") { _, _ ->
-                startDiscoveryAndKeepDialogOpen()
+                devicePickerDialog = null
+                stopDiscovery()
             }
 
         val dialog = builder.create()
+        devicePickerDialog = dialog
+
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val key = adapter.getItem(position) ?: return@setOnItemClickListener
+            val device = discoveredDevices[key] ?: return@setOnItemClickListener
+            dialog.dismiss()
+            devicePickerDialog = null
+            stopDiscovery()
+            connectToDevice(device)
+        }
+
+        btnScan.setOnClickListener {
+            startDiscoveryAndKeepDialogOpen()
+        }
+
+        dialog.setOnShowListener {
+            startDiscoveryAndKeepDialogOpen()
+        }
         dialog.show()
     }
 
+    // Add this function to your MainActivity class
+
     private fun startDiscoveryAndKeepDialogOpen() {
-        if (!hasAllRequiredPermissions()) {
-            requestAllPermissions()
-            return
-        }
+        registerDiscoveryReceiverIfNeeded()
         try {
-            registerDiscoveryReceiverIfNeeded()
-            bluetoothAdapter?.cancelDiscovery()
-            val started = bluetoothAdapter?.startDiscovery() == true
-            if (started) {
-                appendLog("[Scan] Discovery started...")
+            if (bluetoothAdapter?.isDiscovering == true) {
+                bluetoothAdapter.cancelDiscovery() // Cancel any ongoing discovery
+            }
+            val discoveryStarted = bluetoothAdapter?.startDiscovery()
+            if (discoveryStarted == true) {
+                appendLog("[Scan] Starting discovery...")
             } else {
-                appendLog("[Scan] Discovery start failed.")
+                appendLog("[Scan] Failed to start discovery.")
+                // Optionally, you could try to close the dialog or show an error
+                // if discovery fails to start, but for now, we'll just log it.
             }
         } catch (e: SecurityException) {
-            toast("No permission to scan: ${e.message}")
+            appendLog("[Scan] Permission denied for discovery: ${e.message}")
+            // Handle the case where Bluetooth permissions might be missing or denied at runtime
+            // This might involve requesting permissions again or informing the user.
         }
     }
-
     private fun stopDiscovery() {
         try {
             bluetoothAdapter?.cancelDiscovery()
