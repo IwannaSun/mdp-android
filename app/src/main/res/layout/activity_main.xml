@@ -1,12 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 简单垂直布局：顶部连接按钮 + 状态；中间滚动日志；底部输入与发送；最底部导航条含蓝牙图标 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:fitsSystemWindows="true">
 
-    <!-- 顶部区域：连接按钮与状态 -->
+    <!-- Top border (adjust color as needed) -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:background="@color/colorPrimary" />
+
+    <!-- Title bar -->
+    <TextView
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:gravity="center"
+        android:text="MDP Project"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:background="@android:color/white"
+        android:elevation="4dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp" />
+
+    <!-- Existing content starts here -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -35,7 +55,6 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- 日志窗口（可滚动） -->
     <ScrollView
         android:id="@+id/scrollView"
         android:layout_width="match_parent"
@@ -48,13 +67,12 @@
             android:id="@+id/tvLog"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textIsSelectable="true"
-            android:textAppearance="?android:attr/textAppearanceSmall"
             android:lineSpacingExtra="2dp"
-            android:textColor="#222222" />
+            android:textAppearance="?android:attr/textAppearanceSmall"
+            android:textColor="#222222"
+            android:textIsSelectable="true" />
     </ScrollView>
 
-    <!-- 输入与发送 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -76,7 +94,6 @@
             android:text="Send" />
     </LinearLayout>
 
-    <!-- 底部导航条（含蓝牙图标） -->
     <LinearLayout
         android:id="@+id/bottomBar"
         android:layout_width="match_parent"
@@ -101,5 +118,4 @@
             android:text="Bluetooth"
             android:textStyle="bold" />
     </LinearLayout>
-
 </LinearLayout>
