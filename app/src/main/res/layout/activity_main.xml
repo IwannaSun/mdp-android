@@ -19,6 +19,12 @@
             android:layout_height="wrap_content"
             android:text="Connect" />
 
+        <Button
+            android:id="@+id/btnClear"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Clear" />
+
         <TextView
             android:id="@+id/tvStatus"
             android:layout_width="0dp"
