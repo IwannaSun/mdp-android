@@ -56,7 +56,11 @@ class MainActivity : ComponentActivity() {
     private lateinit var tvStatus: TextView
 
     // endregion
-
+    // Directional buttons (not implemented in logic)
+    private lateinit var btnUp: Button
+    private lateinit var btnDown: Button
+    private lateinit var btnLeft: Button
+    private lateinit var btnRight: Button
     // region Discovery state
 
     private val discoveredDevices = ConcurrentHashMap<String, BluetoothDevice>()
@@ -96,6 +100,18 @@ class MainActivity : ComponentActivity() {
         bottomIcon.setOnClickListener { onConnectClicked() }
         btnSend.setOnClickListener { onSendClicked() }
         btnClear.setOnClickListener { onClearClicked() }
+
+        //Directional buttons
+        btnUp = findViewById(R.id.btnUp)
+        btnDown = findViewById(R.id.btnDown)
+        btnLeft = findViewById(R.id.btnLeft)
+        btnRight = findViewById(R.id.btnRight)
+
+        // Add button listeners
+        btnUp.setOnClickListener { sendRobotCommand("F") }    // Forward
+        btnDown.setOnClickListener { sendRobotCommand("B") }  // Backward
+        btnLeft.setOnClickListener { sendRobotCommand("L") }  // Left
+        btnRight.setOnClickListener { sendRobotCommand("R") } // Right
 
     }
 
@@ -508,6 +524,13 @@ class MainActivity : ComponentActivity() {
         device: BluetoothDevice,
         timeoutSeconds: Int
     ): BluetoothSocket? {
+        // Check for BLUETOOTH_CONNECT permission first
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) != PackageManager.PERMISSION_GRANTED) {
+            throw SecurityException("BLUETOOTH_CONNECT permission required")
+        }
         // Try insecure connection first
         val insecure = runCatching {
             device.createInsecureRfcommSocketToServiceRecord(sppUuid)
@@ -641,6 +664,15 @@ class MainActivity : ComponentActivity() {
         runOnUiThread {
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun sendRobotCommand(command: String) {
+        if (bluetoothSocket == null) {
+            toast("Not connected to robot")
+            return
+        }
+        sendData(command)
+        appendLog("[Control] Sent command: $command")
     }
 
     // endregion

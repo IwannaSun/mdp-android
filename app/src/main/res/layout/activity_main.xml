@@ -72,6 +72,56 @@
             android:textIsSelectable="true" />
     </ScrollView>
 
+    <!-- UI elements for the directional control pad layout -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="16dp">
+
+        <!-- Up button -->
+        <Button
+            android:id="@+id/btnUp"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:text="↑"
+            android:textSize="24sp" />
+
+        <!-- Middle row -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnLeft"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:text="←"
+                android:textSize="24sp" />
+
+            <Space
+                android:layout_width="80dp"
+                android:layout_height="80dp" />
+
+            <Button
+                android:id="@+id/btnRight"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:text="→"
+                android:textSize="24sp" />
+        </LinearLayout>
+
+        <!-- Down button -->
+        <Button
+            android:id="@+id/btnDown"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:text="↓"
+            android:textSize="24sp" />
+    </LinearLayout>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
