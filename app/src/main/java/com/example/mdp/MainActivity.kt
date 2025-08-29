@@ -61,6 +61,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var btnDown: Button
     private lateinit var btnLeft: Button
     private lateinit var btnRight: Button
+    private lateinit var btnRotateLeft: Button
+    private lateinit var btnRotateRight: Button
     // region Discovery state
 
     private val discoveredDevices = ConcurrentHashMap<String, BluetoothDevice>()
@@ -106,13 +108,16 @@ class MainActivity : ComponentActivity() {
         btnDown = findViewById(R.id.btnDown)
         btnLeft = findViewById(R.id.btnLeft)
         btnRight = findViewById(R.id.btnRight)
+        btnRotateLeft = findViewById(R.id.btnRotateLeft)
+        btnRotateRight = findViewById(R.id.btnRotateRight)
 
         // Add button listeners
-        btnUp.setOnClickListener { sendRobotCommand("F") }    // Forward
-        btnDown.setOnClickListener { sendRobotCommand("B") }  // Backward
-        btnLeft.setOnClickListener { sendRobotCommand("L") }  // Left
-        btnRight.setOnClickListener { sendRobotCommand("R") } // Right
-
+        btnUp.setOnClickListener { sendRobotCommand("f") }    // Forward
+        btnDown.setOnClickListener { sendRobotCommand("r") }  // Backward
+        btnLeft.setOnClickListener { sendRobotCommand("sl") }  // Left
+        btnRight.setOnClickListener { sendRobotCommand("sr") } // Right
+        btnRotateLeft.setOnClickListener { sendRobotCommand("tl") }  // 向左旋转
+        btnRotateRight.setOnClickListener { sendRobotCommand("tr") }
     }
 
     override fun onDestroy() {
