@@ -144,12 +144,11 @@ class MainActivity : ComponentActivity() {
         appendLog("[AA -> Robot] $msg")
         etMessage.setText("")
     }
-
-    // endregion
     private fun onClearClicked() {
         tvLog.text = ""
         appendLog("[System] Log cleared")
     }
+    // endregion
 
     // region Permissions / readiness
 
