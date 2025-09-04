@@ -24,6 +24,8 @@ import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.seconds
+import androidx.appcompat.app.AppCompatActivity
+
 
 class MainActivity : ComponentActivity() {
 
@@ -118,6 +120,8 @@ class MainActivity : ComponentActivity() {
         btnRight.setOnClickListener { sendRobotCommand("sr") } // Right
         btnRotateLeft.setOnClickListener { sendRobotCommand("tl") }  // 向左旋转
         btnRotateRight.setOnClickListener { sendRobotCommand("tr") }
+
+
     }
 
     override fun onDestroy() {
