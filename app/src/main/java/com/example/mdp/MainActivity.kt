@@ -50,10 +50,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var btnClear: Button
     private lateinit var btnSend: Button
     private lateinit var etMessage: EditText
-    private lateinit var tvLog: TextView
     private lateinit var scrollView: ScrollView
-    private lateinit var bottomIcon: ImageView
-    private lateinit var tvStatus: TextView
+    private lateinit var tvLog: TextView
 
     // endregion
     // Directional buttons (not implemented in logic)
@@ -92,14 +90,17 @@ class MainActivity : ComponentActivity() {
         btnSend = findViewById(R.id.btnSend)
         btnClear = findViewById(R.id.btnClear)
         etMessage = findViewById(R.id.etMessage)
-        tvLog = findViewById(R.id.tvLog)
         scrollView = findViewById(R.id.scrollView)
-        bottomIcon = findViewById(R.id.bottomIcon)
-        tvStatus = findViewById(R.id.tvStatus)
-        tvLog.movementMethod = ScrollingMovementMethod()
+
+        // 在scrollView中添加tvLog用于显示日志
+        tvLog = TextView(this).apply {
+            textSize = 12f
+            setPadding(8, 8, 8, 8)
+            movementMethod = ScrollingMovementMethod()
+        }
+        scrollView.addView(tvLog)
 
         btnConnect.setOnClickListener { onConnectClicked() }
-        bottomIcon.setOnClickListener { onConnectClicked() }
         btnSend.setOnClickListener { onSendClicked() }
         btnClear.setOnClickListener { onClearClicked() }
 
@@ -116,8 +117,63 @@ class MainActivity : ComponentActivity() {
         btnDown.setOnClickListener { sendRobotCommand("r") }  // Backward
         btnLeft.setOnClickListener { sendRobotCommand("sl") }  // Left
         btnRight.setOnClickListener { sendRobotCommand("sr") } // Right
-        btnRotateLeft.setOnClickListener { sendRobotCommand("tl") }  // 向左旋转
+        btnRotateLeft.setOnClickListener { sendRobotCommand("tl") }
         btnRotateRight.setOnClickListener { sendRobotCommand("tr") }
+
+        // 生成20x20 grid cell，不显示坐标
+        val gridMap = findViewById<GridLayout>(R.id.gridMap)
+        gridMap.removeAllViews()
+        gridMap.columnCount = 20
+        gridMap.rowCount = 20
+        for (y in 0 until 20) {
+            for (x in 0 until 20) {
+                val cell = TextView(this)
+                cell.text = ""
+                cell.textSize = 10f
+                cell.setBackgroundColor(0xFFFFFFFF.toInt())
+                cell.setTextColor(0xFF222222.toInt())
+                cell.gravity = android.view.Gravity.CENTER
+                val params = GridLayout.LayoutParams()
+                params.width = 0
+                params.height = 0
+                params.rowSpec = GridLayout.spec(y, 1f)
+                params.columnSpec = GridLayout.spec(x, 1f)
+                params.setMargins(1, 1, 1, 1)
+                cell.layoutParams = params
+                gridMap.addView(cell)
+            }
+        }
+
+        // 动态生成Y轴坐标（0-19，原点在左下角）
+        val yAxis = findViewById<LinearLayout>(R.id.yAxis)
+        yAxis.removeAllViews()
+        for (i in 19 downTo 0) {
+            val label = TextView(this)
+            label.text = i.toString()
+            label.textSize = 12f
+            label.gravity = android.view.Gravity.CENTER
+            label.layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0, 1f
+            )
+            yAxis.addView(label)
+        }
+
+        // 动态生成X轴坐标（0-19，原点在左下角）
+        val xAxis = findViewById<LinearLayout>(R.id.xAxis)
+        xAxis.removeAllViews()
+        for (i in 0 until 20) {
+            val label = TextView(this)
+            label.text = i.toString()
+            label.textSize = 12f
+            label.gravity = android.view.Gravity.CENTER
+            label.layoutParams = LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                1f
+            )
+            xAxis.addView(label)
+        }
     }
 
     override fun onDestroy() {
@@ -145,12 +201,12 @@ class MainActivity : ComponentActivity() {
         etMessage.setText("")
     }
 
-    // endregion
     private fun onClearClicked() {
         tvLog.text = ""
         appendLog("[System] Log cleared")
     }
 
+    // endregion
     // region Permissions / readiness
 
     private fun requiredPermissions(): Array<String> {
@@ -263,7 +319,7 @@ class MainActivity : ComponentActivity() {
                 val key = adapter.getItem(which) ?: return@setAdapter
                 val device = discoveredDevices[key] ?: return@setAdapter
                 d.dismiss()
-                // Modified: Check bond state before connecting
+                // Check bond state before connecting
                 connectWithBondCheck(device)
             }
             .setNegativeButton("Close", null)
@@ -590,17 +646,28 @@ class MainActivity : ComponentActivity() {
         connectJob?.cancel(); connectJob = null
         try { bluetoothSocket?.close() } catch (_: IOException) { }
         bluetoothSocket = null
-
-        runCatching {
-            runOnUiThread {
-                btnConnect.setBackgroundColor(resources.getColor(android.R.color.darker_gray, null))
-            }
-        }
     }
 
     // endregion
 
     // region Read / Write
+
+    private val statusLines = ArrayDeque<String>()
+    private val maxStatusLines = 20
+    @Volatile private var lineCarry: String = ""
+    @Volatile private var lastStatusKey: String? = null
+
+    private fun appendStatusLine(line: String) {
+        if (line.isBlank()) return
+        statusLines.addLast(line)
+        while (statusLines.size > maxStatusLines) statusLines.removeFirst()
+        //tvStatusFeed.text = statusLines.joinToString("\n")
+    }
+
+    private fun parseAndRouteIncomingLine(rawLine: String) {
+        // Directly show all received content, no filtering, no Chinese
+        appendLog("[Robot -> AA] $rawLine")
+    }
 
     private fun startReadLoop() {
         val socket = bluetoothSocket ?: return
@@ -611,9 +678,9 @@ class MainActivity : ComponentActivity() {
                 while (isActive) {
                     val n = input.read(buffer)
                     if (n > 0) {
-                        val text = String(buffer, 0, n, Charsets.UTF_8)
+                        val chunk = String(buffer, 0, n, Charsets.UTF_8)
                         withContext(Dispatchers.Main) {
-                            appendLog("[Robot -> AA] $text")
+                            parseAndRouteIncomingLine(chunk)
                         }
                     } else if (n < 0) {
                         throw IOException("Stream closed")
@@ -661,10 +728,9 @@ class MainActivity : ComponentActivity() {
 
     private fun updateStatus(text: String) {
         runOnUiThread {
-            tvStatus.text = text
+            //tvStatus.text = text
         }
     }
-
     private fun toast(msg: String) {
         runOnUiThread {
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
@@ -680,5 +746,4 @@ class MainActivity : ComponentActivity() {
         appendLog("[Control] Sent command: $command")
     }
 
-    // endregion
 }
