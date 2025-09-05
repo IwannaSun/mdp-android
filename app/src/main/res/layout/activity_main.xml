@@ -54,12 +54,45 @@
     <!-- New parent LinearLayout for ScrollView and Controller buttons -->
 
     <com.example.mdp.GridWithAxesView
-        android:id="@+id/grid_view"
+        android:id="@+id/grid_view_container"
         android:layout_width="358dp"
         android:layout_height="352dp"
         android:layout_gravity="center_horizontal"
         android:layout_marginTop="0dp"
         android:layout_marginBottom="0dp" />
+
+    <!-- Palette area where you drag/create obstacles -->
+    <LinearLayout
+        android:id="@+id/palette_container"
+        android:layout_width="match_parent"
+        android:layout_height="78dp"
+        android:background="#EFEFEF"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:padding="8dp">
+
+        <!-- A single palette example view to long-press on to create obstacles -->
+
+        <FrameLayout
+            android:id="@+id/palette_obstacle"
+            android:layout_width="30dp"
+            android:layout_height="wrap_content"
+            android:layout_margin="8dp">
+
+            <!-- We'll draw a sample obstacle with text inside -->
+            <TextView
+                android:id="@+id/palette_obstacle_label"
+                android:layout_width="29dp"
+                android:layout_height="wrap_content"
+                android:background="@android:color/black"
+                android:gravity="center"
+                android:text="1"
+                android:textColor="@android:color/white"
+                android:textSize="20sp" />
+        </FrameLayout>
+
+        <!-- Optionally other controls -->
+    </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -70,8 +103,8 @@
 
         <ScrollView
             android:id="@+id/scrollView"
-            android:layout_width="0dp"
-            android:layout_height="131dp"
+            android:layout_width="214dp"
+            android:layout_height="128dp"
             android:layout_weight="1"
             android:background="@drawable/black_outline_background"
             android:fillViewport="true"

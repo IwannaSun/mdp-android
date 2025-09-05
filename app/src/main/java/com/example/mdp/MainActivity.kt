@@ -24,7 +24,15 @@ import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.seconds
+import android.graphics.PointF
+import android.util.Log
+import android.view.*
+import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.view.ViewCompat
+import kotlin.math.roundToInt
 
 
 class MainActivity : ComponentActivity() {
@@ -80,9 +88,14 @@ class MainActivity : ComponentActivity() {
     ) { /* Will manually trigger again after user returns */ }
 
     private val requestPermissionsLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { /* Same as above */ }
-
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
+            Log.i("MainActivity", "BLUETOOTH_CONNECT granted = $granted")
+        }
     // endregion
+
+    private lateinit var gridContainer: GridWithAxesView
+    private lateinit var gridView: GridWithAxesView
+    private var nextObstacleId = 1
 
     // region Lifecycle
 
@@ -121,6 +134,34 @@ class MainActivity : ComponentActivity() {
         btnRotateLeft.setOnClickListener { sendRobotCommand("tl") }  // 向左旋转
         btnRotateRight.setOnClickListener { sendRobotCommand("tr") }
 
+        gridContainer = findViewById(R.id.grid_view_container)
+
+        // create and add the grid view (so it's present and we can call helper methods)
+        gridView = GridWithAxesView(this)
+        gridView.layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        )
+        //gridContainer.addView(gridView)
+
+        // Palette long-press -> spawn a new ObstacleView that can be dragged
+        val palette = findViewById<View>(R.id.palette_obstacle)
+        val paletteLabel = findViewById<TextView>(R.id.palette_obstacle_label)
+
+        // runtime permission request for Bluetooth on Android 12+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) // Use ContextCompat
+                != PackageManager.PERMISSION_GRANTED) {
+                // Pass an array of permissions
+                requestPermissionsLauncher.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT))
+            }
+        }
+
+        // long press on palette to create a new obstacle (we start it centered in palette; user will drag)
+        palette.setOnLongClickListener { view ->
+            createAndStartDragFromPalette()
+            true
+        }
 
     }
 
@@ -684,4 +725,103 @@ class MainActivity : ComponentActivity() {
     }
 
     // endregion
+
+    private fun createAndStartDragFromPalette() {
+        // create new obstacle
+        val obs = ObstacleView(this).apply {
+            id = ViewCompat.generateViewId()
+            setNumber(nextObstacleId++)
+        }
+        val palette = findViewById<View>(R.id.palette_obstacle)
+
+        // size it to roughly the cell size (or a bit bigger)
+        val size = (gridView.getCellSizePx() * 0.95f).roundToInt().coerceAtLeast(48)
+        val lp = FrameLayout.LayoutParams(size, size)
+        //gridContainer.addView(obs, lp)
+
+        // position it initially at the center-top of the grid area
+        obs.x = gridView.left.toFloat() + 8f
+        obs.y = gridView.top.toFloat() + 8f
+
+        // attach touch handler for dragging and snapping
+        attachDragHandlers(obs)
+    }
+
+    private fun attachDragHandlers(obstacle: View) {
+        var dX = 0f
+        var dY = 0f
+        val downRaw = PointF(0f, 0f)
+
+        obstacle.setOnTouchListener { v, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    // bring to front so it's not occluded by other views
+                    v.bringToFront()
+                    dX = v.x - event.rawX
+                    dY = v.y - event.rawY
+                    downRaw.set(event.rawX, event.rawY)
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    val newX = event.rawX + dX
+                    val newY = event.rawY + dY
+                    // keep view within parent container bounds while dragging for better UX (optional)
+                    val parent = v.parent as ViewGroup
+                    val maxX = (parent.width - v.width).toFloat()
+                    val maxY = (parent.height - v.height).toFloat()
+                    v.x = newX.coerceIn(0f, maxX)
+                    v.y = newY.coerceIn(0f, maxY)
+                    v.performClick()
+                    true
+                }
+
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    // When user lifts finger, check if center of obstacle is inside gridView
+                    val centerX = v.x + v.width / 2f - gridView.left
+                    val centerY = v.y + v.height / 2f - gridView.top
+
+                    // pixel coords relative to gridView
+                    val relX = centerX + gridView.paddingLeft
+                    val relY = centerY + gridView.paddingTop
+
+                    // Use GridWithAxesView helper: pixelToCell expects coordinates relative to the grid view.
+                    val gridLocalX = (v.x + v.width / 2f) - gridView.x
+                    val gridLocalY = (v.y + v.height / 2f) - gridView.y
+
+                    val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
+                    if (cell == null) {
+                        // outside grid: remove obstacle
+                        (v.parent as FrameLayout).removeView(v)
+                        Log.i("MainActivity", "Obstacle removed (dropped outside grid)")
+                    } else {
+                        // inside grid: snap to center of the cell
+                        val (col, row) = cell
+                        val (cx, cy) = gridView.cellCenterPixels(col, row)
+
+                        // Place obstacle so its center equals (cx,cy) relative to gridView.
+                        // But obstacle.x/y are relative to container. So convert:
+                        val targetX = gridView.x + cx - v.width / 2f
+                        val targetY = gridView.y + cy - v.height / 2f
+
+                        v.x = targetX
+                        v.y = targetY
+
+                        // Compose Bluetooth string. Format: OBS;<id>;<col>;<row>\n
+                        val idText = if (v is ObstacleView) v.id else v.id
+                        val payload = "OBS;${v.id};$col;$row\n"
+
+                        // send via Bluetooth (non-blocking: send on thread)
+                        Thread {
+                            BluetoothSender.sendString(payload)
+                        }.start()
+
+                        Log.i("MainActivity", "Placed obstacle id=${v.id} at col=$col row=$row, sent: $payload")
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+    }
 }
