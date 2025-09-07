@@ -53,45 +53,92 @@
 
     <!-- New parent LinearLayout for ScrollView and Controller buttons -->
 
-    <com.example.mdp.GridWithAxesView
-        android:id="@+id/grid_view_container"
-        android:layout_width="358dp"
-        android:layout_height="352dp"
-        android:layout_gravity="center_horizontal"
+    <!-- Grid container and Status container in horizontal layout -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="450dp"
+        android:orientation="horizontal"
         android:layout_marginTop="0dp"
-        android:layout_marginBottom="0dp" />
+        android:layout_marginBottom="0dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp">
 
-    <!-- Palette area where you drag/create obstacles -->
+        <!-- Grid container - now a FrameLayout that will contain the GridWithAxesView -->
+        <FrameLayout
+            android:id="@+id/grid_view_container"
+            android:layout_width="0dp"
+            android:layout_weight="3"
+            android:layout_height="match_parent"
+            android:layout_gravity="center" />
+
+        <!-- Status container -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="80dp"
+            android:layout_marginStart="8dp"
+            android:orientation="vertical"
+            android:background="@drawable/black_outline_background"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="STATUS"
+                android:textStyle="bold"
+                android:textSize="16sp"
+                android:gravity="center"
+                android:textColor="@android:color/black"/>
+
+            <TextView
+                android:id="@+id/tvRobotStatus"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:layout_marginTop="4dp"
+                android:textSize="14sp"
+                android:gravity="center"
+                android:text="--"
+                android:textColor="@android:color/holo_green_dark"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:autoSizeTextType="uniform"
+                android:autoSizeMinTextSize="8sp"
+                android:autoSizeMaxTextSize="14sp"
+                android:autoSizeStepGranularity="1sp" />
+        </LinearLayout>
+    </LinearLayout>
+
     <LinearLayout
         android:id="@+id/palette_container"
         android:layout_width="match_parent"
         android:layout_height="78dp"
         android:background="#EFEFEF"
-        android:gravity="center"
+        android:gravity="start|center_vertical"
         android:orientation="horizontal"
         android:padding="8dp">
 
-        <!-- A single palette example view to long-press on to create obstacles -->
-
-        <FrameLayout
-            android:id="@+id/palette_obstacle"
-            android:layout_width="30dp"
+        <!-- Palette区：直接拖动障碍物编号标签 -->
+        <LinearLayout
+            android:id="@+id/palette_obstacle_row"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_margin="8dp">
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
-            <!-- We'll draw a sample obstacle with text inside -->
             <TextView
                 android:id="@+id/palette_obstacle_label"
                 android:layout_width="29dp"
-                android:layout_height="wrap_content"
+                android:layout_height="29dp"
+                android:layout_marginEnd="6dp"
                 android:background="@android:color/black"
                 android:gravity="center"
                 android:text="1"
                 android:textColor="@android:color/white"
-                android:textSize="20sp" />
-        </FrameLayout>
+                android:textSize="16sp" />
 
-        <!-- Optionally other controls -->
+        </LinearLayout>
+
     </LinearLayout>
 
     <LinearLayout

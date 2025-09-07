@@ -12,19 +12,6 @@ class ObstacleView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : View(context, attrs) {
 
-    private val bgPaint = Paint().apply {
-        color = Color.BLACK
-        style = Paint.Style.FILL
-        isAntiAlias = true
-    }
-
-    private val textPaint = Paint().apply {
-        color = Color.WHITE
-        textSize = 36f * resources.displayMetrics.density / 2f
-        isAntiAlias = true
-        textAlign = Paint.Align.CENTER
-    }
-
     private var number: Int = 1
 
     fun setNumber(n: Int) {
@@ -32,8 +19,11 @@ class ObstacleView @JvmOverloads constructor(
         invalidate()
     }
 
+    fun getNumber(): Int {
+        return number
+    }
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        // Obstacle will be square: width==height. Parent code should set LayoutParams size.
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
@@ -42,7 +32,7 @@ class ObstacleView @JvmOverloads constructor(
         val paint = Paint().apply { color = Color.BLACK }
         val textPaint = Paint().apply {
             color = Color.WHITE
-            textSize = 40f
+            textSize = 20f
             textAlign = Paint.Align.CENTER
             isAntiAlias = true
             typeface = Typeface.DEFAULT_BOLD

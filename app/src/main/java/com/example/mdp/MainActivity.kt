@@ -7,6 +7,7 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.BroadcastReceiver
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -14,6 +15,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.text.method.ScrollingMovementMethod
+import android.view.DragEvent
 import android.view.View
 import android.widget.*
 import androidx.activity.ComponentActivity
@@ -24,21 +26,12 @@ import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.seconds
-import android.graphics.PointF
 import android.util.Log
 import android.view.*
-import android.widget.FrameLayout
-import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import androidx.core.view.ViewCompat
 import kotlin.math.roundToInt
-
+import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
-
-    // region Bluetooth core
-
     private val sppUuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
@@ -52,10 +45,7 @@ class MainActivity : ComponentActivity() {
     private var pendingDevice: BluetoothDevice? = null
     private var bondStateReceiver: BroadcastReceiver? = null
 
-    // endregion
-
     // region UI
-
     private lateinit var btnConnect: Button
     private lateinit var btnClear: Button
     private lateinit var btnSend: Button
@@ -64,25 +54,24 @@ class MainActivity : ComponentActivity() {
     private lateinit var scrollView: ScrollView
     private lateinit var bottomIcon: ImageView
     private lateinit var tvStatus: TextView
+    private lateinit var tvRobotStatus: TextView
 
-    // endregion
-    // Directional buttons (not implemented in logic)
+    // Directional buttons
     private lateinit var btnUp: Button
     private lateinit var btnDown: Button
     private lateinit var btnLeft: Button
     private lateinit var btnRight: Button
     private lateinit var btnRotateLeft: Button
     private lateinit var btnRotateRight: Button
-    // region Discovery state
+    // endregion
 
+    // region Discovery state
     private val discoveredDevices = ConcurrentHashMap<String, BluetoothDevice>()
     private var receiverRegistered = false
     private var currentListAdapter: ArrayAdapter<String>? = null
-
     // endregion
 
     // region Result launchers
-
     private val requestBtEnableLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { /* Will manually trigger again after user returns */ }
@@ -91,14 +80,12 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
             Log.i("MainActivity", "BLUETOOTH_CONNECT granted = $granted")
         }
-    // endregion
 
-    private lateinit var gridContainer: GridWithAxesView
+    private lateinit var gridContainer: FrameLayout
     private lateinit var gridView: GridWithAxesView
     private var nextObstacleId = 1
 
     // region Lifecycle
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -111,6 +98,7 @@ class MainActivity : ComponentActivity() {
         scrollView = findViewById(R.id.scrollView)
         bottomIcon = findViewById(R.id.bottomIcon)
         tvStatus = findViewById(R.id.tvStatus)
+        tvRobotStatus = findViewById(R.id.tvRobotStatus)
         tvLog.movementMethod = ScrollingMovementMethod()
 
         btnConnect.setOnClickListener { onConnectClicked() }
@@ -127,42 +115,63 @@ class MainActivity : ComponentActivity() {
         btnRotateRight = findViewById(R.id.btnRotateRight)
 
         // Add button listeners
-        btnUp.setOnClickListener { sendRobotCommand("f") }    // Forward
-        btnDown.setOnClickListener { sendRobotCommand("r") }  // Backward
-        btnLeft.setOnClickListener { sendRobotCommand("sl") }  // Left
-        btnRight.setOnClickListener { sendRobotCommand("sr") } // Right
-        btnRotateLeft.setOnClickListener { sendRobotCommand("tl") }  // 向左旋转
+        btnUp.setOnClickListener { sendRobotCommand("f") }
+        btnDown.setOnClickListener { sendRobotCommand("r") }
+        btnLeft.setOnClickListener { sendRobotCommand("sl") }
+        btnRight.setOnClickListener { sendRobotCommand("sr") }
+        btnRotateLeft.setOnClickListener { sendRobotCommand("tl") }
         btnRotateRight.setOnClickListener { sendRobotCommand("tr") }
 
         gridContainer = findViewById(R.id.grid_view_container)
-
-        // create and add the grid view (so it's present and we can call helper methods)
         gridView = GridWithAxesView(this)
         gridView.layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         )
-        //gridContainer.addView(gridView)
+        gridContainer.addView(gridView)
 
-        // Palette long-press -> spawn a new ObstacleView that can be dragged
-        val palette = findViewById<View>(R.id.palette_obstacle)
-        val paletteLabel = findViewById<TextView>(R.id.palette_obstacle_label)
-
-        // runtime permission request for Bluetooth on Android 12+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) // Use ContextCompat
-                != PackageManager.PERMISSION_GRANTED) {
-                // Pass an array of permissions
-                requestPermissionsLauncher.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT))
+        // Palette拖拽逻辑
+        val paletteObstacleLabel = findViewById<TextView>(R.id.palette_obstacle_label)
+        paletteObstacleLabel.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    val dragData = ClipData.newPlainText("obstacle", nextObstacleId.toString())
+                    val shadow = View.DragShadowBuilder(v)
+                    v.startDragAndDrop(dragData, shadow, null, 0)
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    v.performClick()
+                    true
+                }
+                else -> false
             }
         }
 
-        // long press on palette to create a new obstacle (we start it centered in palette; user will drag)
-        palette.setOnLongClickListener { view ->
-            createAndStartDragFromPalette()
-            true
+        // gridContainer接收拖拽
+        gridContainer.setOnDragListener { v, event ->
+            when (event.action) {
+                DragEvent.ACTION_DRAG_STARTED -> true
+                DragEvent.ACTION_DRAG_ENTERED -> true
+                DragEvent.ACTION_DRAG_EXITED -> true
+                DragEvent.ACTION_DROP -> {
+                    val x = event.x
+                    val y = event.y
+                    createAndStartDragFromPalette(x, y)
+                    true
+                }
+                DragEvent.ACTION_DRAG_ENDED -> true
+                else -> false
+            }
         }
 
+        // runtime permission request for Bluetooth on Android 12+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
+                != PackageManager.PERMISSION_GRANTED) {
+                requestPermissionsLauncher.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT))
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -172,11 +181,9 @@ class MainActivity : ComponentActivity() {
         unregisterBondStateReceiver()
         closeConnection()
     }
-
     // endregion
 
     // region UI actions
-
     private fun onConnectClicked() {
         if (!ensureBluetoothReady()) return
         showDevicePickerDialog()
@@ -189,14 +196,36 @@ class MainActivity : ComponentActivity() {
         appendLog("[AA -> Robot] $msg")
         etMessage.setText("")
     }
+
     private fun onClearClicked() {
         tvLog.text = ""
         appendLog("[System] Log cleared")
+        clearAllObstacles()
+        nextObstacleId = 1
+        updatePaletteLabel()
+        appendLog("[System] All obstacles cleared")
+    }
+
+    private fun clearAllObstacles() {
+        val childrenToRemove = mutableListOf<View>()
+        for (i in 0 until gridContainer.childCount) {
+            val child = gridContainer.getChildAt(i)
+            if (child is ObstacleView) {
+                childrenToRemove.add(child)
+            }
+        }
+        childrenToRemove.forEach {
+            gridContainer.removeView(it)
+        }
+    }
+
+    private fun updatePaletteLabel() {
+        val paletteLabel = findViewById<TextView>(R.id.palette_obstacle_label)
+        paletteLabel.text = nextObstacleId.toString()
     }
     // endregion
 
     // region Permissions / readiness
-
     private fun requiredPermissions(): Array<String> {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             arrayOf(
@@ -253,11 +282,9 @@ class MainActivity : ComponentActivity() {
         }
         return true
     }
-
     // endregion
 
     // region Discovery / Device picker
-
     private fun safeDeviceName(device: BluetoothDevice): String {
         return try { device.name ?: "Unknown" } catch (_: SecurityException) { "Unknown" }
     }
@@ -422,11 +449,9 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
     // endregion
 
     // region Bond Management
-
     private fun connectWithBondCheck(device: BluetoothDevice) {
         pendingDevice = device
 
@@ -498,15 +523,13 @@ class MainActivity : ComponentActivity() {
 
     private fun unregisterBondStateReceiver() {
         bondStateReceiver?.let {
-            try { unregisterReceiver(it) } catch (e: Exception) {}
+            try { unregisterReceiver(it) } catch (_: Exception) {}
             bondStateReceiver = null
         }
     }
-
     // endregion
 
     // region Connect / Disconnect
-
     private fun connectToDevice(device: BluetoothDevice) {
         stopDiscovery()
         unregisterDiscoveryReceiverIfNeeded()
@@ -641,11 +664,9 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
     // endregion
 
     // region Read / Write
-
     private fun startReadLoop() {
         val socket = bluetoothSocket ?: return
         readJob = CoroutineScope(Dispatchers.IO).launch {
@@ -657,7 +678,7 @@ class MainActivity : ComponentActivity() {
                     if (n > 0) {
                         val text = String(buffer, 0, n, Charsets.UTF_8)
                         withContext(Dispatchers.Main) {
-                            appendLog("[Robot -> AA] $text")
+                            processIncomingMessage(text)
                         }
                     } else if (n < 0) {
                         throw IOException("Stream closed")
@@ -670,6 +691,26 @@ class MainActivity : ComponentActivity() {
                 }
                 closeConnection()
             }
+        }
+    }
+
+    private fun processIncomingMessage(message: String) {
+        try {
+            val jsonObject = JSONObject(message.trim())
+            if (jsonObject.has("status")) {
+                val status = jsonObject.getString("status").toUpperCase()
+                updateRobotStatus(status)
+                return
+            }
+        } catch (e: Exception) {
+            // 不是JSON或解析出错，按普通消息处理
+        }
+        appendLog("[Robot -> AA] $message")
+    }
+
+    private fun updateRobotStatus(status: String) {
+        runOnUiThread {
+            tvRobotStatus.text = status
         }
     }
 
@@ -690,11 +731,9 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
     // endregion
 
     // region Helpers
-
     private fun appendLog(line: String) {
         val msg = if (line.endsWith("\n")) line else "$line\n"
         runOnUiThread {
@@ -723,105 +762,123 @@ class MainActivity : ComponentActivity() {
         sendData(command)
         appendLog("[Control] Sent command: $command")
     }
-
     // endregion
 
-    private fun createAndStartDragFromPalette() {
-        // create new obstacle
-        val obs = ObstacleView(this).apply {
-            id = ViewCompat.generateViewId()
-            setNumber(nextObstacleId++)
+    private fun createAndStartDragFromPalette(x: Float, y: Float) {
+        try {
+            val obs = ObstacleView(this).apply {
+                id = View.generateViewId()
+                setNumber(nextObstacleId++)
+            }
+            gridView.post {
+                val cellSize = gridView.getCellSizePx()
+                val size = if (cellSize > 0) cellSize.roundToInt() else 80
+                val lp = FrameLayout.LayoutParams(size, size)
+                gridContainer.addView(obs, lp)
+
+                val gridLocalX = x
+                val gridLocalY = y
+
+                Log.i("MainActivity", "Drop coordinates: x=$x, y=$y")
+
+                val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
+                if (cell != null) {
+                    val (col, row) = cell
+                    val (cx, cy) = gridView.cellCenterPixels(col, row)
+
+                    val targetX = cx - size / 2f
+                    val targetY = cy - size / 2f
+
+                    obs.x = targetX
+                    obs.y = targetY
+
+                    val payload = "OBS;${obs.id};$col;$row\n"
+                    if (bluetoothSocket != null) {
+                        sendData(payload)
+                        Log.i("MainActivity", "Sent bluetooth data: $payload")
+                    }
+                } else {
+                    gridContainer.removeView(obs)
+                    toast("Obstacle removed - dropped outside grid")
+                    return@post
+                }
+
+                attachDragHandlers(obs)
+            }
+            updatePaletteLabel()
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error creating obstacle: ${e.message}")
+            toast("Failed to create obstacle: ${e.message}")
         }
-        val palette = findViewById<View>(R.id.palette_obstacle)
-
-        // size it to roughly the cell size (or a bit bigger)
-        val size = (gridView.getCellSizePx() * 0.95f).roundToInt().coerceAtLeast(48)
-        val lp = FrameLayout.LayoutParams(size, size)
-        //gridContainer.addView(obs, lp)
-
-        // position it initially at the center-top of the grid area
-        obs.x = gridView.left.toFloat() + 8f
-        obs.y = gridView.top.toFloat() + 8f
-
-        // attach touch handler for dragging and snapping
-        attachDragHandlers(obs)
     }
 
     private fun attachDragHandlers(obstacle: View) {
         var dX = 0f
         var dY = 0f
-        val downRaw = PointF(0f, 0f)
+        var isDragging = false
 
         obstacle.setOnTouchListener { v, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    // bring to front so it's not occluded by other views
-                    v.bringToFront()
-                    dX = v.x - event.rawX
-                    dY = v.y - event.rawY
-                    downRaw.set(event.rawX, event.rawY)
-                    true
-                }
-
-                MotionEvent.ACTION_MOVE -> {
-                    val newX = event.rawX + dX
-                    val newY = event.rawY + dY
-                    // keep view within parent container bounds while dragging for better UX (optional)
-                    val parent = v.parent as ViewGroup
-                    val maxX = (parent.width - v.width).toFloat()
-                    val maxY = (parent.height - v.height).toFloat()
-                    v.x = newX.coerceIn(0f, maxX)
-                    v.y = newY.coerceIn(0f, maxY)
-                    v.performClick()
-                    true
-                }
-
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    // When user lifts finger, check if center of obstacle is inside gridView
-                    val centerX = v.x + v.width / 2f - gridView.left
-                    val centerY = v.y + v.height / 2f - gridView.top
-
-                    // pixel coords relative to gridView
-                    val relX = centerX + gridView.paddingLeft
-                    val relY = centerY + gridView.paddingTop
-
-                    // Use GridWithAxesView helper: pixelToCell expects coordinates relative to the grid view.
-                    val gridLocalX = (v.x + v.width / 2f) - gridView.x
-                    val gridLocalY = (v.y + v.height / 2f) - gridView.y
-
-                    val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
-                    if (cell == null) {
-                        // outside grid: remove obstacle
-                        (v.parent as FrameLayout).removeView(v)
-                        Log.i("MainActivity", "Obstacle removed (dropped outside grid)")
-                    } else {
-                        // inside grid: snap to center of the cell
-                        val (col, row) = cell
-                        val (cx, cy) = gridView.cellCenterPixels(col, row)
-
-                        // Place obstacle so its center equals (cx,cy) relative to gridView.
-                        // But obstacle.x/y are relative to container. So convert:
-                        val targetX = gridView.x + cx - v.width / 2f
-                        val targetY = gridView.y + cy - v.height / 2f
-
-                        v.x = targetX
-                        v.y = targetY
-
-                        // Compose Bluetooth string. Format: OBS;<id>;<col>;<row>\n
-                        val idText = if (v is ObstacleView) v.id else v.id
-                        val payload = "OBS;${v.id};$col;$row\n"
-
-                        // send via Bluetooth (non-blocking: send on thread)
-                        Thread {
-                            BluetoothSender.sendString(payload)
-                        }.start()
-
-                        Log.i("MainActivity", "Placed obstacle id=${v.id} at col=$col row=$row, sent: $payload")
+            try {
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        v.bringToFront()
+                        dX = v.x - event.rawX
+                        dY = v.y - event.rawY
+                        isDragging = false
+                        true
                     }
-                    true
+                    MotionEvent.ACTION_MOVE -> {
+                        if (!isDragging && (Math.abs(v.x - (event.rawX + dX)) > 10 ||
+                                    Math.abs(v.y - (event.rawY + dY)) > 10)) {
+                            isDragging = true
+                        }
+                        val newX = event.rawX + dX
+                        val newY = event.rawY + dY
+                        v.x = newX
+                        v.y = newY
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        if (!isDragging) {
+                            v.performClick()
+                        } else {
+                            val obstacleCenterX = v.x + v.width / 2f
+                            val obstacleCenterY = v.y + v.height / 2f
+                            val gridLocalX = obstacleCenterX - gridView.x
+                            val gridLocalY = obstacleCenterY - gridView.y
+
+                            val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
+                            if (cell == null) {
+                                (v.parent as FrameLayout).removeView(v)
+                                toast("Obstacle removed - dropped outside grid")
+                            } else {
+                                val (col, row) = cell
+                                val (cx, cy) = gridView.cellCenterPixels(col, row)
+                                val targetX = gridView.x + cx - v.width / 2f
+                                val targetY = gridView.y + cy - v.height / 2f
+
+                                v.x = targetX
+                                v.y = targetY
+
+                                val payload = "OBS;${v.id};$col;$row\n"
+                                if (bluetoothSocket != null) {
+                                    sendData(payload)
+                                }
+                                toast("Obstacle placed at ($col, $row)")
+                            }
+                        }
+                        true
+                    }
+                    else -> false
                 }
-                else -> false
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error in touch handling: ${e.message}")
+                false
             }
+        }
+
+        obstacle.setOnClickListener {
+            toast("Obstacle ${(obstacle as? ObstacleView)?.getNumber() ?: ""} clicked")
         }
     }
 }

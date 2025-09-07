@@ -7,7 +7,6 @@ import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 class GridWithAxesView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyle: Int = 0
@@ -39,13 +38,12 @@ class GridWithAxesView @JvmOverloads constructor(
     }
 
     private fun computeGridMetrics(w: Int, h: Int) {
-        // leave room for labels outside if needed
-        // we'll use (rows + 2) to leave a margin so labels (1..n) can be outside/left/top
+        // leave room for labels outside - x labels below, y labels on left
         val available = min(w, h)
-        cellSizePx = available.toFloat() / (rows + 2) // +2 leaves margin
+        cellSizePx = available.toFloat() / (rows + 3) // +3 leaves more margin for bottom labels
         gridSizePx = cellSizePx * rows
         gridLeft = cellSizePx // one cell offset for left labels
-        gridTop = cellSizePx  // one cell offset for top labels
+        gridTop = cellSizePx  // one cell offset for top margin
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -65,55 +63,46 @@ class GridWithAxesView @JvmOverloads constructor(
             canvas.drawLine(gridLeft, y, gridLeft + gridSizePx, y, gridPaint)
         }
 
-        // labels start at 1 and are centered on each cell
-        for (i in 1..cols) {
-            val centerX = gridLeft + (i - 0.5f) * cellSizePx
-            // draw x labels above the grid (adjust as desired)
+        // X-axis labels (0-19) below the grid
+        for (i in 0 until cols) {
+            val centerX = gridLeft + (i + 0.5f) * cellSizePx
             val txt = i.toString()
             val tx = centerX - textPaint.measureText(txt) / 2f
-            val ty = gridTop - 8f
+            val ty = gridTop + gridSizePx + textPaint.textSize + 8f // below the grid
             canvas.drawText(txt, tx, ty, textPaint)
         }
 
-        for (i in 1..rows) {
-            val centerY = gridTop + (i - 0.5f) * cellSizePx + (textPaint.textSize / 3f)
-            val txt = i.toString()
+        // Y-axis labels (0-19) on the left, from bottom to top
+        for (i in 0 until rows) {
+            val centerY = gridTop + gridSizePx - (i + 0.5f) * cellSizePx + (textPaint.textSize / 3f)
+            val txt = i.toString() // 0 at bottom, 19 at top
             val tx = gridLeft - textPaint.measureText(txt) - 8f
             canvas.drawText(txt, tx, centerY, textPaint)
         }
     }
 
     /**
-     * Convert a screen coordinate (global to this view) into a grid index (1..rows, 1..cols).
-     * Returns Pair(colIndex, rowIndex) or null if outside the grid.
+     * Convert a screen coordinate (global to this view) into a grid index (0..19, 0..19).
+     * Returns Pair(x, y) or null if outside the grid.
      */
     fun pixelToCell(px: Float, py: Float): Pair<Int, Int>? {
-        // px,py are coords relative to THIS view (getX/getY of event mapped properly)
         val localX = px
         val localY = py
         if (localX < gridLeft || localY < gridTop || localX > gridLeft + gridSizePx || localY > gridTop + gridSizePx) {
             return null
         }
-        val col = ((localX - gridLeft) / cellSizePx).toInt() + 1
-        val row = ((localY - gridTop) / cellSizePx).toInt() + 1
-        if (col < 1 || col > cols || row < 1 || row > rows) return null
-        return Pair(col, row)
+        val x = ((localX - gridLeft) / cellSizePx).toInt() // 0-based column (0-19)
+        val gridRow = ((localY - gridTop) / cellSizePx).toInt() // 0-based from top
+        val y = rows - 1 - gridRow // convert to bottom-up (0 at bottom, 19 at top)
+        if (x < 0 || x >= cols || y < 0 || y >= rows) return null
+        return Pair(x, y)
     }
 
-    /**
-     * Given grid indices (col,row) 1..n, return center pixel coordinate relative to this view.
-     */
-    fun cellCenterPixels(col: Int, row: Int): Pair<Float, Float> {
-        val cx = gridLeft + (col - 0.5f) * cellSizePx
-        val cy = gridTop + (row - 0.5f) * cellSizePx
+    fun cellCenterPixels(x: Int, y: Int): Pair<Float, Float> {
+        val cx = gridLeft + (x + 0.5f) * cellSizePx
+        val gridRow = rows - 1 - y // convert from bottom-up to top-down
+        val cy = gridTop + (gridRow + 0.5f) * cellSizePx
         return Pair(cx, cy)
-    }
-
-    /**
-     * Returns true if the given pixel coords (relative to this view) are inside the grid area.
-     */
-    fun isInsideGrid(px: Float, py: Float): Boolean {
-        return !(px < gridLeft || py < gridTop || px > gridLeft + gridSizePx || py > gridTop + gridSizePx)
     }
 
     /**
