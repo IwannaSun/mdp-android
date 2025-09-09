@@ -30,6 +30,7 @@ import android.util.Log
 import android.view.*
 import kotlin.math.roundToInt
 import org.json.JSONObject
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     private val sppUuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
@@ -63,6 +64,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var btnRight: Button
     private lateinit var btnRotateLeft: Button
     private lateinit var btnRotateRight: Button
+
+    // Palette references
+    private lateinit var paletteObstacleLabel: TextView
     // endregion
 
     // region Discovery state
@@ -84,6 +88,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var gridContainer: FrameLayout
     private lateinit var gridView: GridWithAxesView
     private var nextObstacleId = 1
+    private var hasRobot = false
 
     // region Lifecycle
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,6 +104,7 @@ class MainActivity : ComponentActivity() {
         bottomIcon = findViewById(R.id.bottomIcon)
         tvStatus = findViewById(R.id.tvStatus)
         tvRobotStatus = findViewById(R.id.tvRobotStatus)
+        paletteObstacleLabel = findViewById(R.id.palette_obstacle_label)
         tvLog.movementMethod = ScrollingMovementMethod()
 
         btnConnect.setOnClickListener { onConnectClicked() }
@@ -130,9 +136,8 @@ class MainActivity : ComponentActivity() {
         )
         gridContainer.addView(gridView)
 
-        // Palette拖拽逻辑
-        val paletteObstacleLabel = findViewById<TextView>(R.id.palette_obstacle_label)
-        paletteObstacleLabel.setOnTouchListener { v, event ->
+        // Palette拖拽逻辑 - Obstacle
+        paletteObstacleLabel.setOnTouchListener { v: View, event: MotionEvent ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     val dragData = ClipData.newPlainText("obstacle", nextObstacleId.toString())
@@ -148,8 +153,30 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Palette拖拽逻辑 - Robot
+        val paletteRobotImage = findViewById<ImageView>(R.id.palette_robot_image)
+        paletteRobotImage.setOnTouchListener { v: View, event: MotionEvent ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    if (!hasRobot) {
+                        val dragData = ClipData.newPlainText("robot", "robot")
+                        val shadow = View.DragShadowBuilder(v)
+                        v.startDragAndDrop(dragData, shadow, null, 0)
+                    } else {
+                        toast("Robot already placed! Clear to place a new one.")
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    v.performClick()
+                    true
+                }
+                else -> false
+            }
+        }
+
         // gridContainer接收拖拽
-        gridContainer.setOnDragListener { v, event ->
+        gridContainer.setOnDragListener { v: View, event: DragEvent ->
             when (event.action) {
                 DragEvent.ACTION_DRAG_STARTED -> true
                 DragEvent.ACTION_DRAG_ENTERED -> true
@@ -157,7 +184,15 @@ class MainActivity : ComponentActivity() {
                 DragEvent.ACTION_DROP -> {
                     val x = event.x
                     val y = event.y
-                    createAndStartDragFromPalette(x, y)
+                    val clipData = event.clipData
+                    if (clipData != null && clipData.itemCount > 0) {
+                        val draggedData = clipData.getItemAt(0).text.toString()
+                        if (draggedData == "robot") {
+                            createAndStartRobotDrag(x, y)
+                        } else {
+                            createAndStartDragFromPalette(x, y)
+                        }
+                    }
                     true
                 }
                 DragEvent.ACTION_DRAG_ENDED -> true
@@ -201,9 +236,10 @@ class MainActivity : ComponentActivity() {
         tvLog.text = ""
         appendLog("[System] Log cleared")
         clearAllObstacles()
+        clearRobot()
         nextObstacleId = 1
         updatePaletteLabel()
-        appendLog("[System] All obstacles cleared")
+        appendLog("[System] All obstacles and robot cleared")
     }
 
     private fun clearAllObstacles() {
@@ -219,9 +255,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun clearRobot() {
+        val childrenToRemove = mutableListOf<View>()
+        for (i in 0 until gridContainer.childCount) {
+            val child = gridContainer.getChildAt(i)
+            if (child is RobotView) {
+                childrenToRemove.add(child)
+            }
+        }
+        childrenToRemove.forEach {
+            gridContainer.removeView(it)
+        }
+        hasRobot = false
+    }
+
     private fun updatePaletteLabel() {
-        val paletteLabel = findViewById<TextView>(R.id.palette_obstacle_label)
-        paletteLabel.text = nextObstacleId.toString()
+        paletteObstacleLabel.text = nextObstacleId.toString()
     }
     // endregion
 
@@ -574,7 +623,7 @@ class MainActivity : ComponentActivity() {
                     }
                     closeConnection()
                 }
-            } catch (e: TimeoutCancellationException) {
+            } catch (_: TimeoutCancellationException) {
                 withContext(Dispatchers.Main) {
                     updateStatus("Connection timeout")
                     appendLog("[Conn] Timeout")
@@ -698,11 +747,11 @@ class MainActivity : ComponentActivity() {
         try {
             val jsonObject = JSONObject(message.trim())
             if (jsonObject.has("status")) {
-                val status = jsonObject.getString("status").toUpperCase()
+                val status = jsonObject.getString("status").uppercase(Locale.ROOT)
                 updateRobotStatus(status)
                 return
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             // 不是JSON或解析出错，按普通消息处理
         }
         appendLog("[Robot -> AA] $message")
@@ -764,6 +813,7 @@ class MainActivity : ComponentActivity() {
     }
     // endregion
 
+    // region Drag and Drop Functions
     private fun createAndStartDragFromPalette(x: Float, y: Float) {
         try {
             val obs = ObstacleView(this).apply {
@@ -881,4 +931,134 @@ class MainActivity : ComponentActivity() {
             toast("Obstacle ${(obstacle as? ObstacleView)?.getNumber() ?: ""} clicked")
         }
     }
+
+    private fun createAndStartRobotDrag(x: Float, y: Float) {
+        if (hasRobot) {
+            toast("Robot already placed! Clear to place a new one.")
+            return
+        }
+        try {
+            val robotView = RobotView(this).apply {
+                id = View.generateViewId()
+            }
+            gridView.post {
+                val cellSize = gridView.getCellSizePx()
+                // Make robot 3x3 blocks
+                val size = if (cellSize > 0) (cellSize * 3).roundToInt() else 240
+                val lp = FrameLayout.LayoutParams(size, size)
+                gridContainer.addView(robotView, lp)
+
+                val gridLocalX = x
+                val gridLocalY = y
+
+                Log.i("MainActivity", "Robot drop coordinates: x=$x, y=$y")
+
+                val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
+                if (cell != null) {
+                    val (col, row) = cell
+                    val (cx, cy) = gridView.cellCenterPixels(col, row)
+
+                    val targetX = cx - size / 2f
+                    val targetY = cy - size / 2f
+
+                    robotView.x = targetX
+                    robotView.y = targetY
+
+                    hasRobot = true // Update the flag when robot is placed
+
+                    val payload = "ROBOT;$col;$row\n"
+                    if (bluetoothSocket != null) {
+                        sendData(payload)
+                        Log.i("MainActivity", "Sent robot bluetooth data: $payload")
+                    }
+                } else {
+                    gridContainer.removeView(robotView)
+                    toast("Robot removed - dropped outside grid")
+                    return@post
+                }
+
+                attachRobotDragHandler(robotView)
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error creating robot: ${e.message}")
+            toast("Failed to create robot: ${e.message}")
+        }
+    }
+
+    private fun attachRobotDragHandler(robot: View) {
+        var dX = 0f
+        var dY = 0f
+        var isDragging = false
+
+        robot.setOnTouchListener { v, event ->
+            try {
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        v.bringToFront()
+                        dX = v.x - event.rawX
+                        dY = v.y - event.rawY
+                        isDragging = false
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (!isDragging && (Math.abs(v.x - (event.rawX + dX)) > 10 ||
+                                    Math.abs(v.y - (event.rawY + dY)) > 10)) {
+                            isDragging = true
+                        }
+                        val newX = event.rawX + dX
+                        val newY = event.rawY + dY
+                        v.x = newX
+                        v.y = newY
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        if (!isDragging) {
+                            v.performClick()
+                        } else {
+                            val robotCenterX = v.x + v.width / 2f
+                            val robotCenterY = v.y + v.height / 2f
+                            val gridLocalX = robotCenterX - gridView.x
+                            val gridLocalY = robotCenterY - gridView.y
+
+                            val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
+                            if (cell == null) {
+                                (v.parent as FrameLayout).removeView(v)
+                                toast("Robot removed - dropped outside grid")
+                                hasRobot = false // Reset the flag if robot is removed
+                            } else {
+                                val (col, row) = cell
+                                val (cx, cy) = gridView.cellCenterPixels(col, row)
+                                val targetX = gridView.x + cx - v.width / 2f
+                                val targetY = gridView.y + cy - v.height / 2f
+
+                                v.x = targetX
+                                v.y = targetY
+
+                                // Calculate bottom-left corner coordinates for the 3x3 robot
+                                // Since robot spans 3x3, we need to adjust to get the bottom-left cell
+                                val bottomLeftCol = col - 1  // Move 1 cell left from center
+                                val bottomLeftRow = row - 1  // Move 1 cell down from center
+
+                                val payload = "ROBOT;$bottomLeftCol;$bottomLeftRow\n"
+                                if (bluetoothSocket != null) {
+                                    sendData(payload)
+                                }
+                                toast("Robot Coordinates: ($bottomLeftCol, $bottomLeftRow)")
+                            }
+                        }
+                        true
+                    }
+                    else -> false
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error in robot touch handling: ${e.message}")
+                false
+            }
+        }
+
+        robot.setOnClickListener {
+            toast("Robot clicked")
+        }
+    }
+    // endregion
 }

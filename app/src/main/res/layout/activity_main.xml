@@ -139,6 +139,26 @@
 
         </LinearLayout>
 
+        <!-- Robot palette item -->
+        <LinearLayout
+            android:id="@+id/palette_robot_row"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginStart="16dp">
+
+            <ImageView
+                android:id="@+id/palette_robot_image"
+                android:layout_width="29dp"
+                android:layout_height="29dp"
+                android:layout_marginEnd="0dp"
+                android:src="@drawable/ic_robot_north"
+                android:scaleType="fitCenter"
+                android:contentDescription="Draggable Robot" />
+
+        </LinearLayout>
+
     </LinearLayout>
 
     <LinearLayout
