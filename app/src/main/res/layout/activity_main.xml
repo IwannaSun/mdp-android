@@ -155,6 +155,7 @@
                 android:layout_marginEnd="0dp"
                 android:src="@drawable/ic_robot_north"
                 android:scaleType="fitCenter"
+                android:background="@color/black"
                 android:contentDescription="Draggable Robot" />
 
         </LinearLayout>
@@ -171,7 +172,7 @@
         <ScrollView
             android:id="@+id/scrollView"
             android:layout_width="214dp"
-            android:layout_height="128dp"
+            android:layout_height="180dp"
             android:layout_weight="1"
             android:background="@drawable/black_outline_background"
             android:fillViewport="true"
@@ -181,9 +182,11 @@
                 android:id="@+id/tvLog"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:minHeight="40dp"
+                android:background="#F8F8F8"
                 android:lineSpacingExtra="2dp"
                 android:textAppearance="?android:attr/textAppearanceSmall"
-                android:textColor="#222222"
+                android:textColor="#000000"
                 android:textIsSelectable="true" />
         </ScrollView>
 

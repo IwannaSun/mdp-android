@@ -814,6 +814,143 @@ class MainActivity : ComponentActivity() {
     // endregion
 
     // region Drag and Drop Functions
+    private fun createAndStartRobotDrag(x: Float, y: Float) {
+        if (hasRobot) {
+            toast("Robot already placed! Clear to place a new one.")
+            return
+        }
+        try {
+            val robotView = RobotView(this).apply {
+                id = View.generateViewId()
+            }
+            gridView.post {
+                val cellSize = gridView.getCellSizePx()
+                val size = if (cellSize > 0) (cellSize * 3).roundToInt() else 240
+                val lp = FrameLayout.LayoutParams(size, size)
+                gridContainer.addView(robotView, lp)
+
+                val gridLocalX = x
+                val gridLocalY = y
+
+                Log.i("MainActivity", "Robot drop coordinates: x=$x, y=$y")
+
+                val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
+                if (cell != null) {
+                    val (col, row) = cell
+                    val (cx, cy) = gridView.cellCenterPixels(col, row)
+                    val targetX = cx - size / 2f
+                    val targetY = cy - size / 2f
+
+                    robotView.x = targetX
+                    robotView.y = targetY
+                    hasRobot = true
+
+                    // Default direction is 'N' (North) on placement
+                    val direction = "N"
+                    val bottomLeftCol = col - 1
+                    val bottomLeftRow = row - 1
+                    val payload = "ROBOT;$bottomLeftCol;$bottomLeftRow;$direction\n"
+                    if (bluetoothSocket != null) {
+                        sendData(payload)
+                        appendLog("[AA -> Robot] Sent robot position: ($bottomLeftCol, $bottomLeftRow), direction: $direction")
+                    } else {
+                        appendLog("[AA] Robot position: ($bottomLeftCol, $bottomLeftRow), direction: $direction (not sent, not connected)")
+                    }
+                } else {
+                    gridContainer.removeView(robotView)
+                    hasRobot = false
+                    toast("Robot removed - dropped outside grid")
+                    return@post
+                }
+
+                attachRobotDragHandler(robotView)
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error creating robot: ${e.message}")
+            toast("Failed to create robot: ${e.message}")
+        }
+    }
+
+    private fun attachRobotDragHandler(robot: View) {
+        var dX = 0f
+        var dY = 0f
+        var isDragging = false
+        var direction = "N" // Default direction
+
+        robot.setOnTouchListener { v, event ->
+            try {
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        v.bringToFront()
+                        dX = v.x - event.rawX
+                        dY = v.y - event.rawY
+                        isDragging = false
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (!isDragging && (Math.abs(v.x - (event.rawX + dX)) > 10 ||
+                                    Math.abs(v.y - (event.rawY + dY)) > 10)) {
+                            isDragging = true
+                        }
+                        val newX = event.rawX + dX
+                        val newY = event.rawY + dY
+                        v.x = newX
+                        v.y = newY
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        if (!isDragging) {
+                            v.performClick()
+                        } else {
+                            val robotCenterX = v.x + v.width / 2f
+                            val robotCenterY = v.y + v.height / 2f
+                            val gridLocalX = robotCenterX - gridView.x
+                            val gridLocalY = robotCenterY - gridView.y
+
+                            val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
+                            if (cell == null) {
+                                (v.parent as FrameLayout).removeView(v)
+                                hasRobot = false
+                                toast("Robot removed - dropped outside grid")
+                            } else {
+                                val (col, row) = cell
+                                val (cx, cy) = gridView.cellCenterPixels(col, row)
+                                val targetX = gridView.x + cx - v.width / 2f
+                                val targetY = gridView.y + cy - v.height / 2f
+
+                                v.x = targetX
+                                v.y = targetY
+
+                                // Calculate bottom-left corner coordinates for the 3x3 robot
+                                val bottomLeftCol = col - 1
+                                val bottomLeftRow = row - 1
+
+                                // Direction can be changed by rotation buttons, for now keep 'N'
+                                val payload = "ROBOT;$bottomLeftCol;$bottomLeftRow;$direction\n"
+                                if (bluetoothSocket != null) {
+                                    sendData(payload)
+                                    appendLog("[AA -> Robot] Sent robot position: ($bottomLeftCol, $bottomLeftRow), direction: $direction")
+                                } else {
+                                    appendLog("[AA] Robot position: ($bottomLeftCol, $bottomLeftRow), direction: $direction (not sent, not connected)")
+                                }
+                                toast("Robot placed at ($bottomLeftCol, $bottomLeftRow), direction: $direction")
+                            }
+                        }
+                        true
+                    }
+                    else -> false
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error in robot touch handling: ${e.message}")
+                false
+            }
+        }
+
+        robot.setOnClickListener {
+            toast("Robot clicked")
+        }
+    }
+
     private fun createAndStartDragFromPalette(x: Float, y: Float) {
         try {
             val obs = ObstacleView(this).apply {
@@ -845,7 +982,9 @@ class MainActivity : ComponentActivity() {
                     val payload = "OBS;${obs.id};$col;$row\n"
                     if (bluetoothSocket != null) {
                         sendData(payload)
-                        Log.i("MainActivity", "Sent bluetooth data: $payload")
+                        appendLog("[AA -> Robot] Sent obstacle position: (${obs.id}, $col, $row)")
+                    } else {
+                        appendLog("[AA] Obstacle position: (${obs.id}, $col, $row) (not sent, not connected)")
                     }
                 } else {
                     gridContainer.removeView(obs)
@@ -913,6 +1052,9 @@ class MainActivity : ComponentActivity() {
                                 val payload = "OBS;${v.id};$col;$row\n"
                                 if (bluetoothSocket != null) {
                                     sendData(payload)
+                                    appendLog("[AA -> Robot] Sent obstacle position: (${v.id}, $col, $row)")
+                                } else {
+                                    appendLog("[AA] Obstacle position: (${v.id}, $col, $row) (not sent, not connected)")
                                 }
                                 toast("Obstacle placed at ($col, $row)")
                             }
@@ -929,135 +1071,6 @@ class MainActivity : ComponentActivity() {
 
         obstacle.setOnClickListener {
             toast("Obstacle ${(obstacle as? ObstacleView)?.getNumber() ?: ""} clicked")
-        }
-    }
-
-    private fun createAndStartRobotDrag(x: Float, y: Float) {
-        if (hasRobot) {
-            toast("Robot already placed! Clear to place a new one.")
-            return
-        }
-        try {
-            val robotView = RobotView(this).apply {
-                id = View.generateViewId()
-            }
-            gridView.post {
-                val cellSize = gridView.getCellSizePx()
-                // Make robot 3x3 blocks
-                val size = if (cellSize > 0) (cellSize * 3).roundToInt() else 240
-                val lp = FrameLayout.LayoutParams(size, size)
-                gridContainer.addView(robotView, lp)
-
-                val gridLocalX = x
-                val gridLocalY = y
-
-                Log.i("MainActivity", "Robot drop coordinates: x=$x, y=$y")
-
-                val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
-                if (cell != null) {
-                    val (col, row) = cell
-                    val (cx, cy) = gridView.cellCenterPixels(col, row)
-
-                    val targetX = cx - size / 2f
-                    val targetY = cy - size / 2f
-
-                    robotView.x = targetX
-                    robotView.y = targetY
-
-                    hasRobot = true // Update the flag when robot is placed
-
-                    val payload = "ROBOT;$col;$row\n"
-                    if (bluetoothSocket != null) {
-                        sendData(payload)
-                        Log.i("MainActivity", "Sent robot bluetooth data: $payload")
-                    }
-                } else {
-                    gridContainer.removeView(robotView)
-                    toast("Robot removed - dropped outside grid")
-                    return@post
-                }
-
-                attachRobotDragHandler(robotView)
-            }
-        } catch (e: Exception) {
-            Log.e("MainActivity", "Error creating robot: ${e.message}")
-            toast("Failed to create robot: ${e.message}")
-        }
-    }
-
-    private fun attachRobotDragHandler(robot: View) {
-        var dX = 0f
-        var dY = 0f
-        var isDragging = false
-
-        robot.setOnTouchListener { v, event ->
-            try {
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        v.bringToFront()
-                        dX = v.x - event.rawX
-                        dY = v.y - event.rawY
-                        isDragging = false
-                        true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        if (!isDragging && (Math.abs(v.x - (event.rawX + dX)) > 10 ||
-                                    Math.abs(v.y - (event.rawY + dY)) > 10)) {
-                            isDragging = true
-                        }
-                        val newX = event.rawX + dX
-                        val newY = event.rawY + dY
-                        v.x = newX
-                        v.y = newY
-                        true
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        if (!isDragging) {
-                            v.performClick()
-                        } else {
-                            val robotCenterX = v.x + v.width / 2f
-                            val robotCenterY = v.y + v.height / 2f
-                            val gridLocalX = robotCenterX - gridView.x
-                            val gridLocalY = robotCenterY - gridView.y
-
-                            val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
-                            if (cell == null) {
-                                (v.parent as FrameLayout).removeView(v)
-                                toast("Robot removed - dropped outside grid")
-                                hasRobot = false // Reset the flag if robot is removed
-                            } else {
-                                val (col, row) = cell
-                                val (cx, cy) = gridView.cellCenterPixels(col, row)
-                                val targetX = gridView.x + cx - v.width / 2f
-                                val targetY = gridView.y + cy - v.height / 2f
-
-                                v.x = targetX
-                                v.y = targetY
-
-                                // Calculate bottom-left corner coordinates for the 3x3 robot
-                                // Since robot spans 3x3, we need to adjust to get the bottom-left cell
-                                val bottomLeftCol = col - 1  // Move 1 cell left from center
-                                val bottomLeftRow = row - 1  // Move 1 cell down from center
-
-                                val payload = "ROBOT;$bottomLeftCol;$bottomLeftRow\n"
-                                if (bluetoothSocket != null) {
-                                    sendData(payload)
-                                }
-                                toast("Robot Coordinates: ($bottomLeftCol, $bottomLeftRow)")
-                            }
-                        }
-                        true
-                    }
-                    else -> false
-                }
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Error in robot touch handling: ${e.message}")
-                false
-            }
-        }
-
-        robot.setOnClickListener {
-            toast("Robot clicked")
         }
     }
     // endregion
