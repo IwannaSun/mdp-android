@@ -824,6 +824,39 @@ class MainActivity : ComponentActivity() {
     }
     // endregion
 
+    // Helper: Get all obstacle positions as Set<Pair<Int, Int>>
+    private fun getObstaclePositions(): Set<Pair<Int, Int>> {
+        val positions = mutableSetOf<Pair<Int, Int>>()
+        for (i in 0 until gridContainer.childCount) {
+            val child = gridContainer.getChildAt(i)
+            if (child is ObstacleView) {
+                // Get center of obstacle
+                val centerX = child.x + child.width / 2f - gridView.x
+                val centerY = child.y + child.height / 2f - gridView.y
+                val cell = gridView.pixelToCell(centerX, centerY)
+                if (cell != null) positions.add(cell)
+            }
+        }
+        return positions
+    }
+
+    // Helper: Get all robot cells (3x3) given bottom-left col/row
+    private fun getRobotCells(bottomLeftCol: Int, bottomLeftRow: Int): Set<Pair<Int, Int>> {
+        val cells = mutableSetOf<Pair<Int, Int>>()
+        for (dx in 0..2) {
+            for (dy in 0..2) {
+                cells.add(Pair(bottomLeftCol + dx, bottomLeftRow + dy))
+            }
+        }
+        return cells
+    }
+
+    // Helper: Check if robot overlaps any obstacle
+    private fun isRobotOverlapping(bottomLeftCol: Int, bottomLeftRow: Int): Boolean {
+        val robotCells = getRobotCells(bottomLeftCol, bottomLeftRow)
+        val obstacleCells = getObstaclePositions()
+        return robotCells.intersect(obstacleCells).isNotEmpty()
+    }
 
     private fun moveRobot(command: String) {
         // Find the RobotView
@@ -905,6 +938,12 @@ class MainActivity : ComponentActivity() {
         // Clamp to grid bounds (assume grid is 20x20, bottom-left is (0,0))
         col = col.coerceIn(0, 17) // 3x3 robot, so max col is 17
         row = row.coerceIn(0, 17)
+        // Check for overlap before moving
+        if (isRobotOverlapping(col, row)) {
+            appendLog("[Warning] Obstacle Ahead!")
+            toast("Robot move blocked: Obstacle Present!")
+            return
+        }
         robotCol = col
         robotRow = row
         robotDirection = dir
@@ -931,6 +970,7 @@ class MainActivity : ComponentActivity() {
             appendLog("[AA -> Robot] $command -> ($dir, $col, $row)")
         }
     }
+
     // region Drag and Drop Functions
     private fun createAndStartRobotDrag(x: Float, y: Float) {
         if (hasRobot) {
@@ -955,6 +995,16 @@ class MainActivity : ComponentActivity() {
                 val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
                 if (cell != null) {
                     val (col, row) = cell
+                    val bottomLeftCol = col - 1
+                    val bottomLeftRow = row - 1
+                    // Check for overlap before placing
+                    if (isRobotOverlapping(bottomLeftCol, bottomLeftRow)) {
+                        gridContainer.removeView(robotView)
+                        hasRobot = false
+                        appendLog("[Warning] Robot cannot be placed: overlaps obstacle!")
+                        toast("Robot placement blocked: overlaps obstacle")
+                        return@post
+                    }
                     val (cx, cy) = gridView.cellCenterPixels(col, row)
                     val targetX = cx - size / 2f
                     val targetY = cy - size / 2f
@@ -965,8 +1015,6 @@ class MainActivity : ComponentActivity() {
 
                     // Default direction is 'N' (North) on placement
                     val direction = "N"
-                    val bottomLeftCol = col - 1
-                    val bottomLeftRow = row - 1
                     val payload = "ROBOT;$bottomLeftCol;$bottomLeftRow;$direction\n"
                     if (bluetoothSocket != null) {
                         sendData(payload)
@@ -1032,16 +1080,22 @@ class MainActivity : ComponentActivity() {
                                 toast("Robot removed - dropped outside grid")
                             } else {
                                 val (col, row) = cell
+                                val bottomLeftCol = col - 1
+                                val bottomLeftRow = row - 1
+                                // Check for overlap before placing
+                                if (isRobotOverlapping(bottomLeftCol, bottomLeftRow)) {
+                                    (v.parent as FrameLayout).removeView(v)
+                                    hasRobot = false
+                                    appendLog("[Warning] Robot cannot be placed: overlaps obstacle!")
+                                    toast("Robot placement blocked: overlaps obstacle")
+                                    return@setOnTouchListener true
+                                }
                                 val (cx, cy) = gridView.cellCenterPixels(col, row)
                                 val targetX = gridView.x + cx - v.width / 2f
                                 val targetY = gridView.y + cy - v.height / 2f
 
                                 v.x = targetX
                                 v.y = targetY
-
-                                // Calculate bottom-left corner coordinates for the 3x3 robot
-                                val bottomLeftCol = col - 1
-                                val bottomLeftRow = row - 1
 
                                 // Direction can be changed by rotation buttons, for now keep 'N'
                                 val payload = "ROBOT;$bottomLeftCol;$bottomLeftRow;$direction\n"
