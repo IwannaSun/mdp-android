@@ -90,6 +90,10 @@ class MainActivity : ComponentActivity() {
     private var nextObstacleId = 1
     private var hasRobot = false
 
+    // Robot state for local simulation
+    private var robotCol: Int? = null // bottom-left col
+    private var robotRow: Int? = null // bottom-left row
+    private var robotDirection: String = "N" // "N", "E", "S", "W"
     // region Lifecycle
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,12 +125,12 @@ class MainActivity : ComponentActivity() {
         btnRotateRight = findViewById(R.id.btnRotateRight)
 
         // Add button listeners
-        btnUp.setOnClickListener { sendRobotCommand("f") }
-        btnDown.setOnClickListener { sendRobotCommand("r") }
-        btnLeft.setOnClickListener { sendRobotCommand("sl") }
-        btnRight.setOnClickListener { sendRobotCommand("sr") }
-        btnRotateLeft.setOnClickListener { sendRobotCommand("tl") }
-        btnRotateRight.setOnClickListener { sendRobotCommand("tr") }
+        btnUp.setOnClickListener { moveRobot("f") }
+        btnDown.setOnClickListener { moveRobot("r") }
+        btnLeft.setOnClickListener { moveRobot("sl") }
+        btnRight.setOnClickListener { moveRobot("sr") }
+        btnRotateLeft.setOnClickListener { moveRobot("tl") }
+        btnRotateRight.setOnClickListener { moveRobot("tr") }
 
         gridContainer = findViewById(R.id.grid_view_container)
         gridView = GridWithAxesView(this)
@@ -813,6 +817,113 @@ class MainActivity : ComponentActivity() {
     }
     // endregion
 
+
+    private fun moveRobot(command: String) {
+        // Find the RobotView
+        val robotView = (0 until gridContainer.childCount)
+            .map { gridContainer.getChildAt(it) }
+            .find { it is RobotView } as? RobotView ?: run {
+            toast("Robot not placed on grid")
+            return
+        }
+        // If first move, initialize state from view position
+        if (robotCol == null || robotRow == null) {
+            val centerX = robotView.x + robotView.width / 2f - gridView.x
+            val centerY = robotView.y + robotView.height / 2f - gridView.y
+            val cell = gridView.pixelToCell(centerX, centerY)
+            if (cell != null) {
+                robotCol = cell.first - 1
+                robotRow = cell.second - 1
+            } else {
+                toast("Robot is outside grid")
+                return
+            }
+        }
+        // Update direction and position
+        var col = robotCol!!
+        var row = robotRow!!
+        var dir = robotDirection
+        when (command) {
+            "f" -> { // move forward
+                when (dir) {
+                    "N" -> row += 1
+                    "E" -> col += 1
+                    "S" -> row -= 1
+                    "W" -> col -= 1
+                }
+            }
+            "r" -> { // move backward
+                when (dir) {
+                    "N" -> row -= 1
+                    "E" -> col -= 1
+                    "S" -> row += 1
+                    "W" -> col += 1
+                }
+            }
+            "tl" -> { // turn left
+                dir = when (dir) {
+                    "N" -> "W"
+                    "W" -> "S"
+                    "S" -> "E"
+                    "E" -> "N"
+                    else -> dir
+                }
+            }
+            "tr" -> { // turn right
+                dir = when (dir) {
+                    "N" -> "E"
+                    "E" -> "S"
+                    "S" -> "W"
+                    "W" -> "N"
+                    else -> dir
+                }
+            }
+            "sl" -> { // strafe left
+                when (dir) {
+                    "N" -> col -= 1
+                    "E" -> row += 1
+                    "S" -> col += 1
+                    "W" -> row -= 1
+                }
+            }
+            "sr" -> { // strafe right
+                when (dir) {
+                    "N" -> col += 1
+                    "E" -> row -= 1
+                    "S" -> col -= 1
+                    "W" -> row += 1
+                }
+            }
+        }
+        // Clamp to grid bounds (assume grid is 20x20, bottom-left is (0,0))
+        col = col.coerceIn(0, 17) // 3x3 robot, so max col is 17
+        row = row.coerceIn(0, 17)
+        robotCol = col
+        robotRow = row
+        robotDirection = dir
+        // Move robotView
+        val center = gridView.cellCenterPixels(col + 1, row + 1)
+        val size = robotView.width
+        robotView.x = center.first - size / 2f
+        robotView.y = center.second - size / 2f
+        // Optionally, rotate robotView (if you have a direction indicator)
+        robotView.rotation = when (dir) {
+            "N" -> 0f
+            "E" -> 90f
+            "S" -> 180f
+            "W" -> 270f
+            else -> 0f
+        }
+        // Log position
+        val logMsg = "[Local] Robot position: ($dir, $col, $row)"
+        appendLog(logMsg)
+        // Send to robot if connected
+        if (bluetoothSocket != null) {
+            val payload = "ROBOT;$col;$row;$dir\n"
+            sendData(payload)
+            appendLog("[AA -> Robot] $command -> ($dir, $col, $row)")
+        }
+    }
     // region Drag and Drop Functions
     private fun createAndStartRobotDrag(x: Float, y: Float) {
         if (hasRobot) {
@@ -832,7 +943,7 @@ class MainActivity : ComponentActivity() {
                 val gridLocalX = x
                 val gridLocalY = y
 
-                Log.i("MainActivity", "Robot drop coordinates: x=$x, y=$y")
+                Log.i("MainActivity", "Robot coordinates: x=$x, y=$y")
 
                 val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
                 if (cell != null) {
@@ -852,9 +963,9 @@ class MainActivity : ComponentActivity() {
                     val payload = "ROBOT;$bottomLeftCol;$bottomLeftRow;$direction\n"
                     if (bluetoothSocket != null) {
                         sendData(payload)
-                        appendLog("[AA -> Robot] Sent robot position: ($bottomLeftCol, $bottomLeftRow), direction: $direction")
+                        appendLog("[AA -> Robot] Robot position: ($direction, $bottomLeftCol, $bottomLeftRow)")
                     } else {
-                        appendLog("[AA] Robot position: ($bottomLeftCol, $bottomLeftRow), direction: $direction (not sent, not connected)")
+                        appendLog("[AA] Robot position: ($direction, $bottomLeftCol, $bottomLeftRow)")
                     }
                 } else {
                     gridContainer.removeView(robotView)
@@ -929,11 +1040,11 @@ class MainActivity : ComponentActivity() {
                                 val payload = "ROBOT;$bottomLeftCol;$bottomLeftRow;$direction\n"
                                 if (bluetoothSocket != null) {
                                     sendData(payload)
-                                    appendLog("[AA -> Robot] Sent robot position: ($bottomLeftCol, $bottomLeftRow), direction: $direction")
+                                    appendLog("[AA -> Robot] Robot position: ($direction, $bottomLeftCol, $bottomLeftRow)")
                                 } else {
-                                    appendLog("[AA] Robot position: ($bottomLeftCol, $bottomLeftRow), direction: $direction (not sent, not connected)")
+                                    appendLog("[AA] Robot position: ($direction, $bottomLeftCol, $bottomLeftRow)")
                                 }
-                                toast("Robot placed at ($bottomLeftCol, $bottomLeftRow), direction: $direction")
+                                toast("Robot placed at ($direction, $bottomLeftCol, $bottomLeftRow)")
                             }
                         }
                         true
@@ -982,9 +1093,9 @@ class MainActivity : ComponentActivity() {
                     val payload = "OBS;${obs.id};$col;$row\n"
                     if (bluetoothSocket != null) {
                         sendData(payload)
-                        appendLog("[AA -> Robot] Sent obstacle position: (${obs.id}, $col, $row)")
+                        appendLog("[AA -> Robot] Obstacle position: (${obs.id}, $col, $row)")
                     } else {
-                        appendLog("[AA] Obstacle position: (${obs.id}, $col, $row) (not sent, not connected)")
+                        appendLog("[AA] Obstacle position: (${obs.id}, $col, $row)")
                     }
                 } else {
                     gridContainer.removeView(obs)
@@ -1052,11 +1163,11 @@ class MainActivity : ComponentActivity() {
                                 val payload = "OBS;${v.id};$col;$row\n"
                                 if (bluetoothSocket != null) {
                                     sendData(payload)
-                                    appendLog("[AA -> Robot] Sent obstacle position: (${v.id}, $col, $row)")
+                                    appendLog("[AA -> Robot] Obstacle position: (${v.id}, $col, $row)")
                                 } else {
-                                    appendLog("[AA] Obstacle position: (${v.id}, $col, $row) (not sent, not connected)")
+                                    appendLog("[AA] Obstacle position: (${v.id}, $col, $row)")
                                 }
-                                toast("Obstacle placed at ($col, $row)")
+                                toast("Obstacle placed at (ID: ${v.id}, $col, $row)")
                             }
                         }
                         true
