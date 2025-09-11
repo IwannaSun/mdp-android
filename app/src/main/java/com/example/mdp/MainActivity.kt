@@ -211,6 +211,8 @@ class MainActivity : ComponentActivity() {
                 requestPermissionsLauncher.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT))
             }
         }
+
+        registerAclReceiver()
     }
 
     override fun onDestroy() {
@@ -218,7 +220,9 @@ class MainActivity : ComponentActivity() {
         stopDiscovery()
         unregisterDiscoveryReceiverIfNeeded()
         unregisterBondStateReceiver()
+        unregisterAclReceiver()
         closeConnection()
+        stopReconnectJob()
     }
     // endregion
 
@@ -587,6 +591,8 @@ class MainActivity : ComponentActivity() {
         stopDiscovery()
         unregisterDiscoveryReceiverIfNeeded()
         closeConnection()
+        stopReconnectJob()
+        lastConnectedDevice = device
         updateStatus("Connecting to ${safeDeviceName(device)} ...")
         appendLog("[Conn] Connecting to ${safeDeviceName(device)}")
 
@@ -740,9 +746,10 @@ class MainActivity : ComponentActivity() {
             } catch (e: IOException) {
                 withContext(Dispatchers.Main) {
                     appendLog("[Conn] Disconnected: ${e.message}")
-                    updateStatus("Disconnected")
+                    updateStatus("Disconnected - attempting to reconnect...")
                 }
                 closeConnection()
+                startReconnectJob()
             }
         }
     }
@@ -1185,4 +1192,81 @@ class MainActivity : ComponentActivity() {
         }
     }
     // endregion
+
+    // --- Robust Bluetooth Reconnection Logic ---
+    private var reconnectJob: Job? = null
+    private var lastConnectedDevice: BluetoothDevice? = null
+    private var aclReceiver: BroadcastReceiver? = null
+
+    private fun startReconnectJob() {
+        stopReconnectJob()
+        val device = lastConnectedDevice ?: return
+        reconnectJob = CoroutineScope(Dispatchers.IO).launch {
+            while (isActive) {
+                delay(3000) // Try every 3 seconds
+                if (bluetoothSocket == null) {
+                    withContext(Dispatchers.Main) {
+                        updateStatus("Reconnecting to ${safeDeviceName(device)} ...")
+                        appendLog("[Conn] Attempting reconnection...")
+                    }
+                    try {
+                        connectToDevice(device)
+                        if (bluetoothSocket != null) {
+                            withContext(Dispatchers.Main) {
+                                updateStatus("Reconnected to ${safeDeviceName(device)}")
+                                appendLog("[Conn] Reconnected!")
+                            }
+                            break
+                        }
+                    } catch (_: Exception) {
+                        // Ignore, will retry
+                    }
+                } else {
+                    break // Already connected
+                }
+            }
+        }
+    }
+
+    private fun stopReconnectJob() {
+        reconnectJob?.cancel(); reconnectJob = null
+    }
+
+    private fun registerAclReceiver() {
+        if (aclReceiver != null) return
+        aclReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val action = intent.action
+                val device = getDeviceFromIntent(intent)
+                if (device == null || lastConnectedDevice == null) return
+                if (device.address != lastConnectedDevice?.address) return
+                when (action) {
+                    BluetoothDevice.ACTION_ACL_CONNECTED -> {
+                        appendLog("[ACL] Device connected: ${safeDeviceName(device)}")
+                        if (bluetoothSocket == null) {
+                            startReconnectJob()
+                        }
+                    }
+                    BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
+                        appendLog("[ACL] Device disconnected: ${safeDeviceName(device)}")
+                        closeConnection()
+                        startReconnectJob()
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        }
+        registerReceiver(aclReceiver, filter)
+    }
+
+    private fun unregisterAclReceiver() {
+        aclReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+            aclReceiver = null
+        }
+    }
+    // --- End Robust Bluetooth Reconnection Logic ---
 }
