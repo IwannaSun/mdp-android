@@ -67,6 +67,15 @@ class MainActivity : ComponentActivity() {
 
     // Palette references
     private lateinit var paletteObstacleLabel: TextView
+
+    // Obstacle direction buttons
+    private lateinit var btnObstacleDirectionNorth: Button
+    private lateinit var btnObstacleDirectionEast: Button
+    private lateinit var btnObstacleDirectionSouth: Button
+    private lateinit var btnObstacleDirectionWest: Button
+
+    // Current obstacle direction for palette
+    private var currentObstacleDirection: String = "N"
     // endregion
 
     // region Discovery state
@@ -94,6 +103,12 @@ class MainActivity : ComponentActivity() {
     private var robotCol: Int? = null // bottom-left col
     private var robotRow: Int? = null // bottom-left row
     private var robotDirection: String = "N" // "N", "E", "S", "W"
+
+    // Robust Bluetooth Reconnection Logic
+    private var reconnectJob: Job? = null
+    private var lastConnectedDevice: BluetoothDevice? = null
+    private var aclReceiver: BroadcastReceiver? = null
+
     // region Lifecycle
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -111,10 +126,20 @@ class MainActivity : ComponentActivity() {
         paletteObstacleLabel = findViewById(R.id.palette_obstacle_label)
         tvLog.movementMethod = ScrollingMovementMethod()
 
-        btnConnect.setOnClickListener { onConnectClicked() }
-        bottomIcon.setOnClickListener { onConnectClicked() }
-        btnSend.setOnClickListener { onSendClicked() }
-        btnClear.setOnClickListener { onClearClicked() }
+        // Initialize obstacle direction buttons
+        btnObstacleDirectionNorth = findViewById(R.id.btn_obstacle_direction_north)
+        btnObstacleDirectionEast = findViewById(R.id.btn_obstacle_direction_east)
+        btnObstacleDirectionSouth = findViewById(R.id.btn_obstacle_direction_south)
+        btnObstacleDirectionWest = findViewById(R.id.btn_obstacle_direction_west)
+
+        // Set up obstacle direction button listeners
+        btnObstacleDirectionNorth.setOnClickListener { setObstacleDirection("N") }
+        btnObstacleDirectionEast.setOnClickListener { setObstacleDirection("E") }
+        btnObstacleDirectionSouth.setOnClickListener { setObstacleDirection("S") }
+        btnObstacleDirectionWest.setOnClickListener { setObstacleDirection("W") }
+
+        // Initialize the button colors
+        updateDirectionButtonColors()
 
         //Directional buttons
         btnUp = findViewById(R.id.btnUp)
@@ -157,6 +182,10 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        paletteObstacleLabel.setOnClickListener {
+            // Handle click if needed
+        }
+
         // Palette拖拽逻辑 - Robot
         val paletteRobotImage = findViewById<ImageView>(R.id.palette_robot_image)
         paletteRobotImage.setOnTouchListener { v: View, event: MotionEvent ->
@@ -177,6 +206,10 @@ class MainActivity : ComponentActivity() {
                 }
                 else -> false
             }
+        }
+
+        paletteRobotImage.setOnClickListener {
+            // Handle click if needed
         }
 
         // gridContainer接收拖拽
@@ -279,6 +312,21 @@ class MainActivity : ComponentActivity() {
 
     private fun updatePaletteLabel() {
         paletteObstacleLabel.text = nextObstacleId.toString()
+    }
+
+    // 重新计算下一个障碍物ID，基于当前网格中现有的障碍物
+    private fun recalculateNextObstacleId() {
+        var maxId = 0
+        for (i in 0 until gridContainer.childCount) {
+            val child = gridContainer.getChildAt(i)
+            if (child is ObstacleView) {
+                val obstacleNumber = child.getNumber()
+                if (obstacleNumber > maxId) {
+                    maxId = obstacleNumber
+                }
+            }
+        }
+        nextObstacleId = maxId + 1
     }
     // endregion
 
@@ -813,15 +861,6 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
     }
-
-    private fun sendRobotCommand(command: String) {
-        if (bluetoothSocket == null) {
-            toast("Not connected to robot")
-            return
-        }
-        sendData(command)
-        appendLog("[Control] Sent command: $command")
-    }
     // endregion
 
     // Helper: Get all obstacle positions as Set<Pair<Int, Int>>
@@ -997,6 +1036,15 @@ class MainActivity : ComponentActivity() {
                     val (col, row) = cell
                     val bottomLeftCol = col - 1
                     val bottomLeftRow = row - 1
+                    val colCount = gridView.cols
+                    val rowCount = gridView.rows
+                    if (bottomLeftCol < 0 || bottomLeftRow < 0 ||
+                        bottomLeftCol > colCount - 3 || bottomLeftRow > rowCount - 3) {
+                        gridContainer.removeView(robotView)
+                        hasRobot = false
+                        toast("Robot cannot be placed at the edge or outside the grid!")
+                        return@post
+                    }
                     // Check for overlap before placing
                     if (isRobotOverlapping(bottomLeftCol, bottomLeftRow)) {
                         gridContainer.removeView(robotView)
@@ -1041,7 +1089,7 @@ class MainActivity : ComponentActivity() {
         var dX = 0f
         var dY = 0f
         var isDragging = false
-        var direction = "N" // Default direction
+        val direction = "N" // Default direction
 
         robot.setOnTouchListener { v, event ->
             try {
@@ -1054,8 +1102,8 @@ class MainActivity : ComponentActivity() {
                         true
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        if (!isDragging && (Math.abs(v.x - (event.rawX + dX)) > 10 ||
-                                    Math.abs(v.y - (event.rawY + dY)) > 10)) {
+                        if (!isDragging && (kotlin.math.abs(v.x - (event.rawX + dX)) > 10 ||
+                                    kotlin.math.abs(v.y - (event.rawY + dY)) > 10)) {
                             isDragging = true
                         }
                         val newX = event.rawX + dX
@@ -1105,7 +1153,6 @@ class MainActivity : ComponentActivity() {
                                 } else {
                                     appendLog("[AA] Robot position: ($direction, $bottomLeftCol, $bottomLeftRow)")
                                 }
-                                toast("Robot placed at ($direction, $bottomLeftCol, $bottomLeftRow)")
                             }
                         }
                         true
@@ -1125,10 +1172,13 @@ class MainActivity : ComponentActivity() {
 
     private fun createAndStartDragFromPalette(x: Float, y: Float) {
         try {
+            val obstacleNumber = nextObstacleId
             val obs = ObstacleView(this).apply {
                 id = View.generateViewId()
-                setNumber(nextObstacleId++)
+                setNumber(obstacleNumber)
             }
+            nextObstacleId++
+
             gridView.post {
                 val cellSize = gridView.getCellSizePx()
                 val size = if (cellSize > 0) cellSize.roundToInt() else 80
@@ -1142,6 +1192,7 @@ class MainActivity : ComponentActivity() {
 
                 val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
                 if (cell != null) {
+                    obs.setDirection(currentObstacleDirection)
                     val (col, row) = cell
                     val (cx, cy) = gridView.cellCenterPixels(col, row)
 
@@ -1151,15 +1202,16 @@ class MainActivity : ComponentActivity() {
                     obs.x = targetX
                     obs.y = targetY
 
-                    val payload = "OBS;${obs.id};$col;$row\n"
+                    val payload = "OBS;$obstacleNumber;$col;$row;$currentObstacleDirection\n"
                     if (bluetoothSocket != null) {
                         sendData(payload)
-                        appendLog("[AA -> Robot] Obstacle position: (${obs.id}, $col, $row)")
+                        appendLog("[AA -> Robot] Obstacle position: ($obstacleNumber, $col, $row, $currentObstacleDirection)")
                     } else {
-                        appendLog("[AA] Obstacle position: (${obs.id}, $col, $row)")
+                        appendLog("[AA] Obstacle position: ($obstacleNumber, $col, $row, $currentObstacleDirection)")
                     }
                 } else {
                     gridContainer.removeView(obs)
+                    nextObstacleId--
                     toast("Obstacle removed - dropped outside grid")
                     return@post
                 }
@@ -1189,8 +1241,8 @@ class MainActivity : ComponentActivity() {
                         true
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        if (!isDragging && (Math.abs(v.x - (event.rawX + dX)) > 10 ||
-                                    Math.abs(v.y - (event.rawY + dY)) > 10)) {
+                        if (!isDragging && (kotlin.math.abs(v.x - (event.rawX + dX)) > 10 ||
+                                    kotlin.math.abs(v.y - (event.rawY + dY)) > 10)) {
                             isDragging = true
                         }
                         val newX = event.rawX + dX
@@ -1211,6 +1263,8 @@ class MainActivity : ComponentActivity() {
                             val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
                             if (cell == null) {
                                 (v.parent as FrameLayout).removeView(v)
+                                recalculateNextObstacleId()
+                                updatePaletteLabel()
                                 toast("Obstacle removed - dropped outside grid")
                             } else {
                                 val (col, row) = cell
@@ -1221,14 +1275,15 @@ class MainActivity : ComponentActivity() {
                                 v.x = targetX
                                 v.y = targetY
 
-                                val payload = "OBS;${v.id};$col;$row\n"
+                                val obstacleNumber = (v as? ObstacleView)?.getNumber() ?: 0
+                                val payload = "OBS;$obstacleNumber;$col;$row\n"
                                 if (bluetoothSocket != null) {
                                     sendData(payload)
-                                    appendLog("[AA -> Robot] Obstacle position: (${v.id}, $col, $row)")
+                                    appendLog("[AA -> Robot] Obstacle position: ($obstacleNumber, $col, $row)")
                                 } else {
-                                    appendLog("[AA] Obstacle position: (${v.id}, $col, $row)")
+                                    appendLog("[AA] Obstacle position: ($obstacleNumber, $col, $row)")
                                 }
-                                toast("Obstacle placed at (ID: ${v.id}, $col, $row)")
+                                toast("Obstacle placed at (ID: $obstacleNumber, $col, $row)")
                             }
                         }
                         true
@@ -1248,10 +1303,6 @@ class MainActivity : ComponentActivity() {
     // endregion
 
     // --- Robust Bluetooth Reconnection Logic ---
-    private var reconnectJob: Job? = null
-    private var lastConnectedDevice: BluetoothDevice? = null
-    private var aclReceiver: BroadcastReceiver? = null
-
     private fun startReconnectJob() {
         stopReconnectJob()
         val device = lastConnectedDevice ?: return
@@ -1323,4 +1374,31 @@ class MainActivity : ComponentActivity() {
         }
     }
     // --- End Robust Bluetooth Reconnection Logic ---
+
+    // region Obstacle Direction Control
+    private fun setObstacleDirection(direction: String) {
+        currentObstacleDirection = direction
+        updateDirectionButtonColors()
+        appendLog("[Palette] Obstacle direction set to: $direction")
+    }
+
+    private fun updateDirectionButtonColors() {
+        val greyColor = android.graphics.Color.parseColor("#CCCCCC")
+        val yellowColor = android.graphics.Color.parseColor("#FFD700")
+
+        // Reset all buttons to grey
+        btnObstacleDirectionNorth.setBackgroundColor(greyColor)
+        btnObstacleDirectionEast.setBackgroundColor(greyColor)
+        btnObstacleDirectionSouth.setBackgroundColor(greyColor)
+        btnObstacleDirectionWest.setBackgroundColor(greyColor)
+
+        // Set the active direction to yellow
+        when (currentObstacleDirection) {
+            "N" -> btnObstacleDirectionNorth.setBackgroundColor(yellowColor)
+            "E" -> btnObstacleDirectionEast.setBackgroundColor(yellowColor)
+            "S" -> btnObstacleDirectionSouth.setBackgroundColor(yellowColor)
+            "W" -> btnObstacleDirectionWest.setBackgroundColor(yellowColor)
+        }
+    }
+    // endregion
 }

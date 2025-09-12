@@ -126,16 +126,78 @@
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
-            <TextView
-                android:id="@+id/palette_obstacle_label"
-                android:layout_width="29dp"
-                android:layout_height="29dp"
+            <!-- Obstacle with direction buttons layout -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:layout_marginEnd="6dp"
-                android:background="@android:color/black"
-                android:gravity="center"
-                android:text="1"
-                android:textColor="@android:color/white"
-                android:textSize="16sp" />
+                android:orientation="vertical"
+                android:gravity="center">
+
+                <!-- Top row: North button -->
+                <Button
+                    android:id="@+id/btn_obstacle_direction_north"
+                    android:layout_width="24dp"
+                    android:layout_height="8dp"
+                    android:layout_marginBottom="1dp"
+                    android:background="#FFD700"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:padding="0dp" />
+
+                <!-- Middle row: West + Obstacle + East -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <!-- Left (West) button -->
+                    <Button
+                        android:id="@+id/btn_obstacle_direction_west"
+                        android:layout_width="8dp"
+                        android:layout_height="24dp"
+                        android:layout_marginEnd="1dp"
+                        android:background="#CCCCCC"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:padding="0dp" />
+
+                    <!-- Center obstacle label -->
+                    <TextView
+                        android:id="@+id/palette_obstacle_label"
+                        android:layout_width="29dp"
+                        android:layout_height="29dp"
+                        android:background="@android:color/black"
+                        android:gravity="center"
+                        android:text="1"
+                        android:textColor="@android:color/white"
+                        android:textSize="16sp" />
+
+                    <!-- Right (East) button -->
+                    <Button
+                        android:id="@+id/btn_obstacle_direction_east"
+                        android:layout_width="8dp"
+                        android:layout_height="24dp"
+                        android:layout_marginStart="1dp"
+                        android:background="#CCCCCC"
+                        android:minWidth="0dp"
+                        android:minHeight="0dp"
+                        android:padding="0dp" />
+
+                </LinearLayout>
+
+                <!-- Bottom row: South button -->
+                <Button
+                    android:id="@+id/btn_obstacle_direction_south"
+                    android:layout_width="24dp"
+                    android:layout_height="8dp"
+                    android:layout_marginTop="1dp"
+                    android:minHeight="0dp"
+                    android:padding="0dp"
+                    android:background="#CCCCCC"/>
+
+            </LinearLayout>
 
         </LinearLayout>
 
