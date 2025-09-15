@@ -1275,6 +1275,7 @@ class MainActivity : ComponentActivity() {
                                 v.x = targetX
                                 v.y = targetY
 
+
                                 val obstacleNumber = (v as? ObstacleView)?.getNumber() ?: 0
                                 val payload = "OBS;$obstacleNumber;$col;$row\n"
                                 if (bluetoothSocket != null) {
