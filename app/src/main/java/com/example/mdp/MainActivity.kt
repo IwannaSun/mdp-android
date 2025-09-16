@@ -826,6 +826,21 @@ class MainActivity : ComponentActivity() {
             }
             return
         }
+        // --- Handle incoming robot position update ---
+        if (trimmedMsg.startsWith("ROBOT", ignoreCase = true)) {
+            val parts = trimmedMsg.split(",").map { it.trim() }
+            if (parts.size >= 4) {
+                val x = parts[1].toIntOrNull()
+                val y = parts[2].toIntOrNull()
+                val direction = parts[3].uppercase(Locale.ROOT)
+                if (x != null && y != null && direction in setOf("N", "E", "S", "W")) {
+                    // Update robot position and direction on map
+                    updateRobotOnMap(x, y, direction)
+                    appendLog("[System] Robot position updated: ($direction, $x, $y)")
+                    return
+                }
+            }
+        }
         try {
             val jsonObject = JSONObject(trimmedMsg)
             if (jsonObject.has("status")) {
@@ -837,6 +852,40 @@ class MainActivity : ComponentActivity() {
             // 不是JSON或解析出错，按普通消息处理
         }
         appendLog("[Robot -> AA] $message")
+    }
+
+    // Update robot position and direction on the map
+    private fun updateRobotOnMap(x: Int, y: Int, direction: String) {
+        // Find the RobotView
+        val robotView = (0 until gridContainer.childCount)
+            .map { gridContainer.getChildAt(it) }
+            .find { it is RobotView } as? RobotView ?: run {
+            toast("Robot not placed on grid")
+            return
+        }
+        // Clamp to grid bounds (assume grid is 20x20, bottom-left is (0,0))
+        val col = x.coerceIn(0, 17)
+        val row = y.coerceIn(0, 17)
+        robotCol = col
+        robotRow = row
+        robotDirection = direction
+        // Move robotView
+        val center = gridView.cellCenterPixels(col + 1, row + 1)
+        val size = robotView.width
+        robotView.x = center.first - size / 2f
+        robotView.y = center.second - size / 2f
+        // Rotate robotView
+        robotView.rotation = when (direction) {
+            "N" -> 0f
+            "E" -> 90f
+            "S" -> 180f
+            "W" -> 270f
+            else -> 0f
+        }
+        // Optionally update status text
+        runOnUiThread {
+            tvRobotStatus.text = "($direction, $col, $row)"
+        }
     }
 
     private fun updateRobotStatus(status: String) {
