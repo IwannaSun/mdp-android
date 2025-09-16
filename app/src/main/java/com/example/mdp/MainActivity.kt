@@ -1,10 +1,12 @@
 package com.example.mdp
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
 import android.content.BroadcastReceiver
 import android.content.ClipData
@@ -45,6 +47,7 @@ class MainActivity : ComponentActivity() {
     private var connectJob: Job? = null
     private var pendingDevice: BluetoothDevice? = null
     private var bondStateReceiver: BroadcastReceiver? = null
+
 
     // region UI
     private lateinit var btnConnect: Button
@@ -108,8 +111,11 @@ class MainActivity : ComponentActivity() {
     private var reconnectJob: Job? = null
     private var lastConnectedDevice: BluetoothDevice? = null
     private var aclReceiver: BroadcastReceiver? = null
+    private var acceptJob: Job? = null
+    private var serverSocket: BluetoothServerSocket? = null
 
     // region Lifecycle
+    @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -140,6 +146,11 @@ class MainActivity : ComponentActivity() {
 
         // Initialize the button colors
         updateDirectionButtonColors()
+
+        // Set up Connect, Send, and Clear button listeners
+        btnConnect.setOnClickListener { onConnectClicked() }
+        btnSend.setOnClickListener { onSendClicked() }
+        btnClear.setOnClickListener { onClearClicked() }
 
         //Directional buttons
         btnUp = findViewById(R.id.btnUp)
@@ -638,6 +649,7 @@ class MainActivity : ComponentActivity() {
     private fun connectToDevice(device: BluetoothDevice) {
         stopDiscovery()
         unregisterDiscoveryReceiverIfNeeded()
+        // Removed stopReconnectJob() call
         closeConnection()
         stopReconnectJob()
         lastConnectedDevice = device
@@ -707,40 +719,46 @@ class MainActivity : ComponentActivity() {
         if (ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.BLUETOOTH_CONNECT
-            ) != PackageManager.PERMISSION_GRANTED) {
-            throw SecurityException("BLUETOOTH_CONNECT permission required")
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return null
         }
-        // Try insecure connection first
-        val insecure = runCatching {
-            device.createInsecureRfcommSocketToServiceRecord(sppUuid)
-        }.getOrNull()
 
-        insecure?.let { sock ->
-            runCatching {
-                withTimeout(timeoutSeconds.seconds) { sock.connect() }
-            }.onSuccess {
-                appendLog("[Conn] Connected using insecure RFCOMM")
-                return sock
-            }.onFailure {
-                appendLog("[Conn] Insecure connection failed, trying secure...")
-                runCatching { sock.close() }
+        // Try secure connection first
+        val secureSocket = try {
+            device.createRfcommSocketToServiceRecord(sppUuid)
+        } catch (e: Exception) {
+            appendLog("[Conn] Secure socket creation failed: ${e.message}")
+            null
+        }
+
+        if (secureSocket != null) {
+            try {
+                appendLog("[Conn] Trying secure connection...")
+                withTimeout(timeoutSeconds.seconds) { secureSocket.connect() }
+                return secureSocket
+            } catch (e: Exception) {
+                appendLog("[Conn] Secure connection failed: ${e.message}")
+                runCatching { secureSocket.close() }
             }
         }
 
-        // Try secure connection
-        val secure = runCatching {
-            device.createRfcommSocketToServiceRecord(sppUuid)
-        }.getOrNull()
+        // Try insecure connection
+        val insecureSocket = try {
+            device.createInsecureRfcommSocketToServiceRecord(sppUuid)
+        } catch (e: Exception) {
+            appendLog("[Conn] Insecure socket creation failed: ${e.message}")
+            null
+        }
 
-        secure?.let { sock ->
-            runCatching {
-                withTimeout(timeoutSeconds.seconds) { sock.connect() }
-            }.onSuccess {
-                appendLog("[Conn] Connected using secure RFCOMM")
-                return sock
-            }.onFailure {
-                appendLog("[Conn] Secure connection also failed")
-                runCatching { sock.close() }
+        if (insecureSocket != null) {
+            try {
+                appendLog("[Conn] Trying insecure connection...")
+                withTimeout(timeoutSeconds.seconds) { insecureSocket.connect() }
+                return insecureSocket
+            } catch (e: Exception) {
+                appendLog("[Conn] Insecure connection failed: ${e.message}")
+                runCatching { insecureSocket.close() }
             }
         }
 
@@ -750,10 +768,9 @@ class MainActivity : ComponentActivity() {
             val m = device.javaClass.getMethod("createRfcommSocket", Int::class.java)
             val fallbackSocket = m.invoke(device, 1) as BluetoothSocket
             withTimeout(timeoutSeconds.seconds) { fallbackSocket.connect() }
-            appendLog("[Conn] Connected using fallback method")
             return fallbackSocket
         } catch (e: Exception) {
-            appendLog("[Conn] Fallback method failed: ${e.javaClass.simpleName}")
+            appendLog("[Conn] Fallback method failed: ${e.message}")
         }
 
         return null
@@ -803,8 +820,38 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun processIncomingMessage(message: String) {
+        val trimmedMessage = message.trim()
+
+        // Handle ROBOT position update messages
+        if (trimmedMessage.startsWith("ROBOT,", ignoreCase = true)) {
+            try {
+                val parts = trimmedMessage.split(",").map { it.trim() }
+                if (parts.size >= 4) {
+                    val x = parts[1].toInt()
+                    val y = parts[2].toInt()
+                    val direction = parts[3].uppercase()
+
+                    // Validate direction
+                    if (direction in listOf("N", "E", "S", "W")) {
+                        updateRobotPositionFromBluetooth(x, y, direction)
+                        return
+                    } else {
+                        appendLog("[Robot -> AA] Invalid direction in ROBOT message: $direction")
+                        return
+                    }
+                }
+            } catch (e: NumberFormatException) {
+                appendLog("[Robot -> AA] Invalid coordinates in ROBOT message: $trimmedMessage")
+                return
+            } catch (e: Exception) {
+                appendLog("[Robot -> AA] Error parsing ROBOT message: ${e.message}")
+                return
+            }
+        }
+
+        // Handle JSON status messages
         try {
-            val jsonObject = JSONObject(message.trim())
+            val jsonObject = JSONObject(trimmedMessage)
             if (jsonObject.has("status")) {
                 val status = jsonObject.getString("status").uppercase(Locale.ROOT)
                 updateRobotStatus(status)
@@ -813,30 +860,143 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {
             // 不是JSON或解析出错，按普通消息处理
         }
-        appendLog("[Robot -> AA] $message")
+
+        // Handle other messages
+        appendLog("[Robot -> AA] $trimmedMessage")
     }
 
-    private fun updateRobotStatus(status: String) {
+    private fun updateRobotPositionFromBluetooth(x: Int, y: Int, direction: String) {
         runOnUiThread {
-            tvRobotStatus.text = status
+            // Find existing robot view
+            val robotView = (0 until gridContainer.childCount)
+                .map { gridContainer.getChildAt(it) }
+                .find { it is RobotView } as? RobotView
+
+            if (robotView != null) {
+                // Post the update to the view's message queue to ensure it runs after layout.
+                robotView.post {
+                    // Update robot position on grid
+                    val cellSize = gridView.getCellSizePx()
+                    val size = robotView.width
+
+                    // Convert robot coordinates to grid position (x,y are bottom-left of 3x3 robot)
+                    val centerCol = x + 1  // Center of 3x3 robot
+                    val centerRow = y + 1
+
+                    // Check if position is valid
+                    if (centerCol >= 1 && centerCol <= gridView.cols - 2 &&
+                        centerRow >= 1 && centerRow <= gridView.rows - 2) {
+
+                        val (cx, cy) = gridView.cellCenterPixels(centerCol, centerRow)
+                        robotView.x = cx - size / 2f
+                        robotView.y = cy - size / 2f
+
+                        // Update robot rotation based on direction
+                        robotView.rotation = when (direction) {
+                            "N" -> 0f
+                            "E" -> 90f
+                            "S" -> 180f
+                            "W" -> 270f
+                            else -> 0f
+                        }
+
+                        // Update internal state
+                        robotCol = x
+                        robotRow = y
+                        robotDirection = direction
+
+                        appendLog("[System] Robot position updated via Bluetooth: ($direction, $x, $y)")
+                        toast("Robot moved to ($x, $y) facing $direction")
+                    } else {
+                        appendLog("[Warning] Invalid robot position from Bluetooth: ($x, $y)")
+                        toast("Invalid robot position: ($x, $y)")
+                    }
+                }
+            } else {
+                // No robot on grid, create one at the specified position
+                createRobotAtPosition(x, y, direction)
+            }
         }
     }
 
     private fun sendData(text: String) {
         val socket = bluetoothSocket
         if (socket == null) {
-            toast("Not connected.")
+            appendLog("[Send] Not connected")
             return
         }
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                socket.outputStream.write(text.toByteArray(Charsets.UTF_8))
-            } catch (e: IOException) {
-                withContext(Dispatchers.Main) {
-                    appendLog("[Send] Failed: ${e.message}")
-                    toast("Send failed: ${e.message}")
-                }
+
+        try {
+            val outputStream = socket.outputStream
+            outputStream.write(text.toByteArray(Charsets.UTF_8))
+            outputStream.flush()
+        } catch (e: IOException) {
+            appendLog("[Send] Failed: ${e.message}")
+            closeConnection()
+            startReconnectJob()
+        }
+    }
+
+    private fun updateRobotStatus(status: String) {
+        runOnUiThread {
+            tvRobotStatus.text = "Robot Status: $status"
+            appendLog("[Robot Status] $status")
+        }
+    }
+
+    private fun createRobotAtPosition(x: Int, y: Int, direction: String) {
+        if (hasRobot) {
+            appendLog("[Warning] Robot already exists, updating position instead")
+            return
+        }
+
+        try {
+            val robotView = RobotView(this).apply {
+                id = View.generateViewId()
             }
+
+            val cellSize = gridView.getCellSizePx()
+            val size = if (cellSize > 0) (cellSize * 3).roundToInt() else 240
+            val lp = FrameLayout.LayoutParams(size, size)
+            gridContainer.addView(robotView, lp)
+
+            // Convert robot coordinates to grid position
+            val centerCol = x + 1  // Center of 3x3 robot
+            val centerRow = y + 1
+
+            // Check if position is valid
+            if (centerCol >= 1 && centerCol <= gridView.cols - 2 &&
+                centerRow >= 1 && centerRow <= gridView.rows - 2) {
+
+                val (cx, cy) = gridView.cellCenterPixels(centerCol, centerRow)
+                robotView.x = cx - size / 2f
+                robotView.y = cy - size / 2f
+
+                // Set robot rotation based on direction
+                robotView.rotation = when (direction) {
+                    "S" -> 180f
+                    "W" -> 270f
+                    "N" -> 0f
+                    "E" -> 90f
+                    else -> 0f
+                }
+
+                hasRobot = true
+                robotCol = x
+                robotRow = y
+                robotDirection = direction
+
+                attachRobotDragHandler(robotView)
+
+                toast("Robot placed at ($x, $y) facing $direction")
+            } else {
+                gridContainer.removeView(robotView)
+                appendLog("[Warning] Cannot create robot at invalid position: ($x, $y)")
+                toast("Cannot place robot at invalid position: ($x, $y)")
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error creating robot from Bluetooth: ${e.message}")
+            appendLog("[Error] Failed to create robot: ${e.message}")
         }
     }
     // endregion
@@ -1004,7 +1164,7 @@ class MainActivity : ComponentActivity() {
         appendLog(logMsg)
         // Send to robot if connected
         if (bluetoothSocket != null) {
-            val payload = "ROBOT;$col;$row;$dir\n"
+            val payload = "ROBOT,$col,$row,$dir\n"
             sendData(payload)
             appendLog("[AA -> Robot] $command -> ($dir, $col, $row)")
         }
@@ -1054,21 +1214,29 @@ class MainActivity : ComponentActivity() {
                         return@post
                     }
                     val (cx, cy) = gridView.cellCenterPixels(col, row)
-                    val targetX = cx - size / 2f
-                    val targetY = cy - size / 2f
-
-                    robotView.x = targetX
-                    robotView.y = targetY
-                    hasRobot = true
+                    robotView.x = cx - size / 2f
+                    robotView.y = cy - size / 2f
 
                     // Default direction is 'N' (North) on placement
-                    val direction = "N"
-                    val payload = "ROBOT;$bottomLeftCol;$bottomLeftRow;$direction\n"
+                    val robotDirection = "N"
+
+                    // Set robot rotation based on direction
+                    robotView.rotation = when (robotDirection) {
+                        "N" -> 0f
+                        "E" -> 90f
+                        "S" -> 180f
+                        "W" -> 270f
+                        else -> 0f
+                    }
+
+                    hasRobot = true
+
+                    val payload = "ROBOT,$bottomLeftCol,$bottomLeftRow,$robotDirection\n"
                     if (bluetoothSocket != null) {
                         sendData(payload)
-                        appendLog("[AA -> Robot] Robot position: ($direction, $bottomLeftCol, $bottomLeftRow)")
+                        appendLog("[AA -> Robot] Robot position: ($robotDirection, $bottomLeftCol, $bottomLeftRow)")
                     } else {
-                        appendLog("[AA] Robot position: ($direction, $bottomLeftCol, $bottomLeftRow)")
+                        appendLog("[AA] Robot position: ($robotDirection, $bottomLeftCol, $bottomLeftRow)")
                     }
                 } else {
                     gridContainer.removeView(robotView)
@@ -1146,7 +1314,7 @@ class MainActivity : ComponentActivity() {
                                 v.y = targetY
 
                                 // Direction can be changed by rotation buttons, for now keep 'N'
-                                val payload = "ROBOT;$bottomLeftCol;$bottomLeftRow;$direction\n"
+                                val payload = "ROBOT,$bottomLeftCol,$bottomLeftRow,$direction\n"
                                 if (bluetoothSocket != null) {
                                     sendData(payload)
                                     appendLog("[AA -> Robot] Robot position: ($direction, $bottomLeftCol, $bottomLeftRow)")
@@ -1202,7 +1370,7 @@ class MainActivity : ComponentActivity() {
                     obs.x = targetX
                     obs.y = targetY
 
-                    val payload = "OBS;$obstacleNumber;$col;$row;$currentObstacleDirection\n"
+                    val payload = "OBS,$obstacleNumber,$col,$row,$currentObstacleDirection\n"
                     if (bluetoothSocket != null) {
                         sendData(payload)
                         appendLog("[AA -> Robot] Obstacle position: ($obstacleNumber, $col, $row, $currentObstacleDirection)")
@@ -1276,7 +1444,7 @@ class MainActivity : ComponentActivity() {
                                 v.y = targetY
 
                                 val obstacleNumber = (v as? ObstacleView)?.getNumber() ?: 0
-                                val payload = "OBS;$obstacleNumber;$col;$row\n"
+                                val payload = "OBS,$obstacleNumber,$col,$row,$currentObstacleDirection\n"
                                 if (bluetoothSocket != null) {
                                     sendData(payload)
                                     appendLog("[AA -> Robot] Obstacle position: ($obstacleNumber, $col, $row)")
@@ -1305,36 +1473,127 @@ class MainActivity : ComponentActivity() {
     // --- Robust Bluetooth Reconnection Logic ---
     private fun startReconnectJob() {
         stopReconnectJob()
+
         val device = lastConnectedDevice ?: return
+
+        // Wait for external device to reconnect instead of actively reconnecting
         reconnectJob = CoroutineScope(Dispatchers.IO).launch {
-            while (isActive) {
-                delay(3000) // Try every 3 seconds
-                if (bluetoothSocket == null) {
-                    withContext(Dispatchers.Main) {
-                        updateStatus("Reconnecting to ${safeDeviceName(device)} ...")
-                        appendLog("[Conn] Attempting reconnection...")
-                    }
-                    try {
-                        connectToDevice(device)
-                        if (bluetoothSocket != null) {
-                            withContext(Dispatchers.Main) {
-                                updateStatus("Reconnected to ${safeDeviceName(device)}")
-                                appendLog("[Conn] Reconnected!")
-                            }
-                            break
-                        }
-                    } catch (_: Exception) {
-                        // Ignore, will retry
-                    }
-                } else {
-                    break // Already connected
+            runOnUiThread {
+                updateStatus("Connection lost. Waiting for ${safeDeviceName(device)} to reconnect...")
+                appendLog("[Conn] Connection lost. Waiting for ${safeDeviceName(device)} to reconnect...")
+                btnConnect.setBackgroundColor(resources.getColor(android.R.color.holo_orange_light, null))
+            }
+
+            // Similar to BluetoothPopUp implementation, show a dialog if needed
+            waitForConnectionJob()
+        }
+    }
+
+    private fun waitForConnectionJob() {
+        stopReconnectJob()
+
+        // Start server socket to listen for incoming connections
+        acceptJob = CoroutineScope(Dispatchers.IO).launch {
+            try {
+                withContext(Dispatchers.Main) {
+                    updateStatus("Waiting for connection...")
+                    appendLog("[Conn] Waiting for external device to initiate connection...")
+                }
+
+                // Create a server socket to accept incoming connections
+                startAcceptThread()
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    appendLog("[Conn] Error while waiting for connection: ${e.message}")
                 }
             }
         }
     }
 
+    private fun startAcceptThread() {
+        if (!hasBtConnectPermission()) {
+            return
+        }
+
+        try {
+            // Close any existing server socket
+            try {
+                serverSocket?.close()
+            } catch (e: Exception) {
+                appendLog("[Accept] Error closing existing server socket: ${e.message}")
+            }
+
+            // Create a new server socket
+            try {
+                serverSocket = bluetoothAdapter?.listenUsingInsecureRfcommWithServiceRecord(
+                    "MDP_Android", sppUuid
+                )
+            } catch (se: SecurityException) {
+                appendLog("[Accept] Security exception creating server socket: ${se.message}")
+                return
+            }
+
+            appendLog("[Accept] RFCOM server socket started...")
+
+            // Accept connection in a background thread
+            acceptJob = CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val socket = withTimeout(300.seconds) {
+                        serverSocket?.accept() ?: throw IOException("Server socket is null")
+                    }
+
+                    appendLog("[Accept] RFCOM server socket accepted connection")
+
+                    // Get connected device
+                    val connectedDevice = socket.remoteDevice
+                    lastConnectedDevice = connectedDevice
+
+                    // Close the server socket as we only need one connection
+                    serverSocket?.close()
+                    serverSocket = null
+
+                    // Set up the connected socket
+                    bluetoothSocket = socket
+
+                    withContext(Dispatchers.Main) {
+                        updateStatus("Connected to ${safeDeviceName(connectedDevice)}")
+                        appendLog("[Conn] Connected to ${safeDeviceName(connectedDevice)}")
+                        toast("Connected to ${safeDeviceName(connectedDevice)}")
+                        btnConnect.setBackgroundColor(resources.getColor(android.R.color.holo_green_light, null))
+                    }
+
+                    // Start read loop
+                    startReadLoop()
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        appendLog("[Accept] Accept failed: ${e.message}")
+                    }
+
+                    // Try again
+                    delay(1000)
+                    startAcceptThread()
+                }
+            }
+        } catch (e: Exception) {
+            appendLog("[Accept] Error creating server socket: ${e.message}")
+        }
+    }
+
+    private fun stopAcceptThread() {
+        acceptJob?.cancel()
+        acceptJob = null
+        try {
+            serverSocket?.close()
+        } catch (e: Exception) {
+            appendLog("[Accept] Error closing server socket: ${e.message}")
+        }
+        serverSocket = null
+    }
+
     private fun stopReconnectJob() {
-        reconnectJob?.cancel(); reconnectJob = null
+        reconnectJob?.cancel()
+        reconnectJob = null
+        stopAcceptThread()
     }
 
     private fun registerAclReceiver() {
@@ -1347,15 +1606,13 @@ class MainActivity : ComponentActivity() {
                 if (device.address != lastConnectedDevice?.address) return
                 when (action) {
                     BluetoothDevice.ACTION_ACL_CONNECTED -> {
-                        appendLog("[ACL] Device connected: ${safeDeviceName(device)}")
-                        if (bluetoothSocket == null) {
-                            startReconnectJob()
-                        }
+                        appendLog("[ACL] Device ACL connected: ${safeDeviceName(device)}")
                     }
                     BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
-                        appendLog("[ACL] Device disconnected: ${safeDeviceName(device)}")
+                        appendLog("[ACL] Device ACL disconnected: ${safeDeviceName(device)}")
+                        appendLog("[ACL] Physical Bluetooth disconnected, waiting for reconnection...")
                         closeConnection()
-                        startReconnectJob()
+                        // Wait for reconnection instead of actively reconnecting
                     }
                 }
             }
@@ -1375,13 +1632,13 @@ class MainActivity : ComponentActivity() {
     }
     // --- End Robust Bluetooth Reconnection Logic ---
 
+    // --- End Optimized Bluetooth Reconnection Logic ---
     // region Obstacle Direction Control
     private fun setObstacleDirection(direction: String) {
         currentObstacleDirection = direction
         updateDirectionButtonColors()
-        appendLog("[Palette] Obstacle direction set to: $direction")
+    // --- End Bluetooth Reconnection Logic ---
     }
-
     private fun updateDirectionButtonColors() {
         val greyColor = android.graphics.Color.parseColor("#CCCCCC")
         val yellowColor = android.graphics.Color.parseColor("#FFD700")
@@ -1401,4 +1658,76 @@ class MainActivity : ComponentActivity() {
         }
     }
     // endregion
+
+    // Add missing tryConnectWithSecureInsecure function
+    private suspend fun tryConnectWithSecureInsecure(
+        device: BluetoothDevice,
+        timeoutSeconds: Int
+    ): BluetoothSocket? {
+        // Check for BLUETOOTH_CONNECT permission first
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return null
+        }
+
+        // Try both secure and insecure methods in a loop with delays
+        for (attempt in 1..3) { // Try 3 rounds
+            appendLog("[Conn] Connection attempt $attempt...")
+
+            // Try secure connection first
+            val secureSocket = try {
+                device.createRfcommSocketToServiceRecord(sppUuid)
+            } catch (e: Exception) {
+                appendLog("[Conn] Secure socket creation failed: ${e.message}")
+                null
+            }
+
+            if (secureSocket != null) {
+                try {
+                    appendLog("[Conn] Trying secure connection (attempt $attempt)...")
+                    withTimeout(timeoutSeconds.seconds) { secureSocket.connect() }
+                    appendLog("[Conn] Secure connection successful!")
+                    return secureSocket
+                } catch (e: Exception) {
+                    appendLog("[Conn] Secure connection failed: ${e.message}")
+                    runCatching { secureSocket.close() }
+                }
+            }
+
+            // Wait a bit before trying insecure
+            delay(1000) // 1 second delay
+
+            // Try insecure connection
+            val insecureSocket = try {
+                device.createInsecureRfcommSocketToServiceRecord(sppUuid)
+            } catch (e: Exception) {
+                appendLog("[Conn] Insecure socket creation failed: ${e.message}")
+                null
+            }
+
+            if (insecureSocket != null) {
+                try {
+                    appendLog("[Conn] Trying insecure connection (attempt $attempt)...")
+                    withTimeout(timeoutSeconds.seconds) { insecureSocket.connect() }
+                    appendLog("[Conn] Insecure connection successful!")
+                    return insecureSocket
+                } catch (e: Exception) {
+                    appendLog("[Conn] Insecure connection failed: ${e.message}")
+                    runCatching { insecureSocket.close() }
+                }
+            }
+
+            // Wait before next attempt (except for last attempt)
+            if (attempt < 3) {
+                appendLog("[Conn] Waiting 2 seconds before next attempt...")
+                delay(2000)
+            }
+        }
+
+        appendLog("[Conn] All connection attempts failed")
+        return null
+    }
 }
