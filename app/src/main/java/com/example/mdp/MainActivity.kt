@@ -861,6 +861,30 @@ class MainActivity : ComponentActivity() {
             // 不是JSON或解析出错，按普通消息处理
         }
 
+        // Handle TARGET message: TARGET,<obstacle>,<target>
+        if (trimmedMessage.startsWith("TARGET,", ignoreCase = true)) {
+            try {
+                val parts = trimmedMessage.split(",").map { it.trim() }
+                if (parts.size >= 3) {
+                    val obstacleNum = parts[1].toInt()
+                    val targetId = parts[2]
+                    // Find the ObstacleView with this number
+                    for (i in 0 until gridContainer.childCount) {
+                        val child = gridContainer.getChildAt(i)
+                        if (child is ObstacleView && child.getNumber() == obstacleNum) {
+                            child.setTargetId(targetId)
+                            appendLog("[System] Obstacle $obstacleNum updated with Target ID: $targetId")
+                            break
+                        }
+                    }
+                    return
+                }
+            } catch (e: Exception) {
+                appendLog("[System] Error parsing TARGET message: ${e.message}")
+                return
+            }
+        }
+
         // Handle other messages
         appendLog("[Robot -> AA] $trimmedMessage")
     }
