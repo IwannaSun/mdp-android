@@ -56,10 +56,11 @@ class ObstacleView @JvmOverloads constructor(
         val paint = Paint().apply { color = Color.BLACK }
         val textPaint = Paint().apply {
             color = Color.WHITE
-            textSize = 20f
+            textSize = 12f
             textAlign = Paint.Align.CENTER
             isAntiAlias = true
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = Typeface.DEFAULT
+            strokeWidth = 1f
         }
 
         // Draw and rotate background image if present
@@ -82,16 +83,15 @@ class ObstacleView @JvmOverloads constructor(
 
         // Draw the target ID or obstacle number
         val xPos = width / 2f
-        val yPos = (height / 2f) - ((textPaint.descent() + textPaint.ascent()) / 2)
+        val yPos = (height / 2f) - ((textPaint.descent() + textPaint.ascent()) / 2) +1f
         if (targetId != null) {
             val targetPaint = Paint().apply {
                 color = Color.WHITE
-                textSize = 40f
+                textSize = 20f
                 textAlign = Paint.Align.CENTER
                 isAntiAlias = true
                 typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD)
-                strokeWidth = 3f
-                style = Paint.Style.FILL_AND_STROKE
+                strokeWidth = 2f
             }
             canvas.drawText(targetId!!, xPos, yPos, targetPaint)
         } else {

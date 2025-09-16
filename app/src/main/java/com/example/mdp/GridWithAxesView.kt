@@ -98,15 +98,29 @@ class GridWithAxesView @JvmOverloads constructor(
         return Pair(x, y)
     }
 
+    fun pixelToNearestCell(px: Float, py: Float): Pair<Int, Int> {
+        val localX = px
+        val localY = py
+
+        val relativeX = localX - gridLeft
+        val relativeY = localY - gridTop
+
+        val rawX = (relativeX / cellSizePx).toInt()
+        val rawGridRow = (relativeY / cellSizePx).toInt()
+
+        val x = rawX.coerceIn(0, cols - 1)
+        val gridRow = rawGridRow.coerceIn(0, rows - 1)
+
+        val y = rows - 1 - gridRow
+
+        return Pair(x, y)
+    }
+
     fun cellCenterPixels(x: Int, y: Int): Pair<Float, Float> {
         val cx = gridLeft + (x + 0.5f) * cellSizePx
         val gridRow = rows - 1 - y // convert from bottom-up to top-down
         val cy = gridTop + (gridRow + 0.5f) * cellSizePx
         return Pair(cx, cy)
     }
-
-    /**
-     * Expose cell size so other code can size obstacles accordingly.
-     */
     fun getCellSizePx(): Float = cellSizePx
 }

@@ -33,6 +33,8 @@ import android.view.*
 import kotlin.math.roundToInt
 import org.json.JSONObject
 import java.util.Locale
+import kotlin.math.pow
+
 
 class MainActivity : ComponentActivity() {
     private val sppUuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
@@ -1277,164 +1279,86 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun attachRobotDragHandler(robot: View) {
-        var dX = 0f
-        var dY = 0f
-        var isDragging = false
-        val direction = "N" // Default direction
-
-        robot.setOnTouchListener { v, event ->
-            try {
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        v.bringToFront()
-                        dX = v.x - event.rawX
-                        dY = v.y - event.rawY
-                        isDragging = false
-                        true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        if (!isDragging && (kotlin.math.abs(v.x - (event.rawX + dX)) > 10 ||
-                                    kotlin.math.abs(v.y - (event.rawY + dY)) > 10)) {
-                            isDragging = true
-                        }
-                        val newX = event.rawX + dX
-                        val newY = event.rawY + dY
-                        v.x = newX
-                        v.y = newY
-                        true
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        if (!isDragging) {
-                            v.performClick()
-                        } else {
-                            val robotCenterX = v.x + v.width / 2f
-                            val robotCenterY = v.y + v.height / 2f
-                            val gridLocalX = robotCenterX - gridView.x
-                            val gridLocalY = robotCenterY - gridView.y
-
-                            val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
-                            if (cell == null) {
-                                (v.parent as FrameLayout).removeView(v)
-                                hasRobot = false
-                                toast("Robot removed - dropped outside grid")
-                            } else {
-                                val (col, row) = cell
-                                val bottomLeftCol = col - 1
-                                val bottomLeftRow = row - 1
-                                // Check for overlap before placing
-                                if (isRobotOverlapping(bottomLeftCol, bottomLeftRow)) {
-                                    (v.parent as FrameLayout).removeView(v)
-                                    hasRobot = false
-                                    appendLog("[Warning] Robot cannot be placed: overlaps obstacle!")
-                                    toast("Robot placement blocked: overlaps obstacle")
-                                    return@setOnTouchListener true
-                                }
-                                val (cx, cy) = gridView.cellCenterPixels(col, row)
-                                val targetX = gridView.x + cx - v.width / 2f
-                                val targetY = gridView.y + cy - v.height / 2f
-
-                                v.x = targetX
-                                v.y = targetY
-
-                                // Direction can be changed by rotation buttons, for now keep 'N'
-                                val payload = "ROBOT,$bottomLeftCol,$bottomLeftRow,$direction\n"
-                                if (bluetoothSocket != null) {
-                                    sendData(payload)
-                                    appendLog("[AA -> Robot] Robot position: ($direction, $bottomLeftCol, $bottomLeftRow)")
-                                } else {
-                                    appendLog("[AA] Robot position: ($direction, $bottomLeftCol, $bottomLeftRow)")
-                                }
-                            }
-                        }
-                        true
-                    }
-                    else -> false
-                }
-            } catch (e: Exception) {
-                Log.e("MainActivity", "Error in robot touch handling: ${e.message}")
-                false
-            }
-        }
-
-        robot.setOnClickListener {
-            toast("Robot clicked")
-        }
-    }
-
     private fun createAndStartDragFromPalette(x: Float, y: Float) {
         try {
-            val obstacleNumber = nextObstacleId
-            val obs = ObstacleView(this).apply {
+            // 创建一个新的ObstacleView
+            val obstacleView = ObstacleView(this).apply {
                 id = View.generateViewId()
-                setNumber(obstacleNumber)
+                setNumber(nextObstacleId)
+                setDirection(currentObstacleDirection)
             }
-            nextObstacleId++
 
             gridView.post {
                 val cellSize = gridView.getCellSizePx()
                 val size = if (cellSize > 0) cellSize.roundToInt() else 80
                 val lp = FrameLayout.LayoutParams(size, size)
-                gridContainer.addView(obs, lp)
+                gridContainer.addView(obstacleView, lp)
 
                 val gridLocalX = x
                 val gridLocalY = y
 
-                Log.i("MainActivity", "Drop coordinates: x=$x, y=$y")
+                // 找到最近的有效单元格
+                val cell = gridView.pixelToNearestCell(gridLocalX, gridLocalY)
+                val (col, row) = cell
 
-                val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
-                if (cell != null) {
-                    obs.setDirection(currentObstacleDirection)
-                    val (col, row) = cell
-                    val (cx, cy) = gridView.cellCenterPixels(col, row)
+                // 计算单元格中心位置
+                val (cx, cy) = gridView.cellCenterPixels(col, row)
+                obstacleView.x = gridView.x + cx - size / 2f
+                obstacleView.y = gridView.y + cy - size / 2f
 
-                    val targetX = cx - size / 2f
-                    val targetY = cy - size / 2f
+                // 为障碍物添加拖拽处理
+                attachDragHandler(obstacleView, false)
 
-                    obs.x = targetX
-                    obs.y = targetY
-
-                    val payload = "OBS,$obstacleNumber,$col,$row,$currentObstacleDirection\n"
-                    if (bluetoothSocket != null) {
-                        sendData(payload)
-                        appendLog("[AA -> Robot] Obstacle position: ($obstacleNumber, $col, $row, $currentObstacleDirection)")
-                    } else {
-                        appendLog("[AA] Obstacle position: ($obstacleNumber, $col, $row, $currentObstacleDirection)")
-                    }
+                // 发送障碍物信息
+                val payload = "OBS,$nextObstacleId,$col,$row,$currentObstacleDirection\n"
+                if (bluetoothSocket != null) {
+                    sendData(payload)
+                    appendLog("[AA -> Robot] Obstacle created: ($nextObstacleId, $col, $row, $currentObstacleDirection)")
                 } else {
-                    gridContainer.removeView(obs)
-                    nextObstacleId--
-                    toast("Obstacle removed - dropped outside grid")
-                    return@post
+                    appendLog("[AA] Obstacle created: ($nextObstacleId, $col, $row, $currentObstacleDirection)")
                 }
+                toast("Obstacle placed at (ID: $nextObstacleId, $col, $row)")
 
-                attachDragHandlers(obs)
+                // 更新下一个障碍物ID
+                nextObstacleId++
+                updatePaletteLabel()
             }
-            updatePaletteLabel()
         } catch (e: Exception) {
             Log.e("MainActivity", "Error creating obstacle: ${e.message}")
             toast("Failed to create obstacle: ${e.message}")
         }
     }
 
-    private fun attachDragHandlers(obstacle: View) {
+    private fun attachDragHandler(view: View, isRobot: Boolean) {
         var dX = 0f
         var dY = 0f
         var isDragging = false
+        var startX = 0f
+        var startY = 0f
+        var originalX = 0f
+        var originalY = 0f
 
-        obstacle.setOnTouchListener { v, event ->
+        view.setOnTouchListener { v, event ->
             try {
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         v.bringToFront()
                         dX = v.x - event.rawX
                         dY = v.y - event.rawY
+                        startX = event.rawX
+                        startY = event.rawY
                         isDragging = false
+                        // 记录拖拽前的位置
+                        originalX = v.x
+                        originalY = v.y
                         true
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        if (!isDragging && (kotlin.math.abs(v.x - (event.rawX + dX)) > 10 ||
-                                    kotlin.math.abs(v.y - (event.rawY + dY)) > 10)) {
+                        val distanceMoved = kotlin.math.sqrt(
+                            (event.rawX - startX).pow(2) +
+                            (event.rawY - startY).pow(2)
+                        )
+                        if (!isDragging && distanceMoved > 10) {
                             isDragging = true
                         }
                         val newX = event.rawX + dX
@@ -1444,53 +1368,284 @@ class MainActivity : ComponentActivity() {
                         true
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        if (!isDragging) {
+                        val distanceMoved = kotlin.math.sqrt(
+                            (event.rawX - startX).pow(2) +
+                            (event.rawY - startY).pow(2)
+                        )
+                        if (distanceMoved < 10) {
                             v.performClick()
                         } else {
-                            val obstacleCenterX = v.x + v.width / 2f
-                            val obstacleCenterY = v.y + v.height / 2f
-                            val gridLocalX = obstacleCenterX - gridView.x
-                            val gridLocalY = obstacleCenterY - gridView.y
-
-                            val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
-                            if (cell == null) {
-                                (v.parent as FrameLayout).removeView(v)
-                                recalculateNextObstacleId()
-                                updatePaletteLabel()
-                                toast("Obstacle removed - dropped outside grid")
-                            } else {
-                                val (col, row) = cell
-                                val (cx, cy) = gridView.cellCenterPixels(col, row)
-                                val targetX = gridView.x + cx - v.width / 2f
-                                val targetY = gridView.y + cy - v.height / 2f
-
-                                v.x = targetX
-                                v.y = targetY
-
-                                val obstacleNumber = (v as? ObstacleView)?.getNumber() ?: 0
-                                val payload = "OBS,$obstacleNumber,$col,$row,$currentObstacleDirection\n"
-                                if (bluetoothSocket != null) {
-                                    sendData(payload)
-                                    appendLog("[AA -> Robot] Obstacle position: ($obstacleNumber, $col, $row)")
+                            val centerX = v.x + v.width / 2f
+                            val centerY = v.y + v.height / 2f
+                            val gridLocalX = centerX - gridView.x
+                            val gridLocalY = centerY - gridView.y
+                            var overlapped = false
+                            if (isRobot) {
+                                // 机器人拖拽处理逻辑
+                                val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
+                                if (cell == null) {
+                                    // 拖出网格，回到原位
+                                    v.x = originalX
+                                    v.y = originalY
+                                    toast("Robot removed - dropped outside grid, reverted to previous position")
+                                    overlapped = true
                                 } else {
-                                    appendLog("[AA] Obstacle position: ($obstacleNumber, $col, $row)")
+                                    val (col, row) = cell
+                                    val bottomLeftCol = col - 1
+                                    val bottomLeftRow = row - 1
+                                    val colCount = gridView.cols
+                                    val rowCount = gridView.rows
+                                    val validCol = bottomLeftCol.coerceIn(0, colCount - 3)
+                                    val validRow = bottomLeftRow.coerceIn(0, rowCount - 3)
+                                    if (bottomLeftCol < 0 || bottomLeftRow < 0 ||
+                                        bottomLeftCol > colCount - 3 || bottomLeftRow > rowCount - 3) {
+                                        // 边界外，检查重叠
+                                        if (isRobotOverlapping(validCol, validRow)) {
+                                            v.x = originalX
+                                            v.y = originalY
+                                            toast("Robot placement blocked: overlaps obstacle, reverted to previous position")
+                                            overlapped = true
+                                        } else {
+                                            val (cx, cy) = gridView.cellCenterPixels(validCol + 1, validRow + 1)
+                                            v.x = gridView.x + cx - v.width / 2f
+                                            v.y = gridView.y + cy - v.height / 2f
+                                            robotCol = validCol
+                                            robotRow = validRow
+                                            val payload = "ROBOT,$validCol,$validRow,$robotDirection\n"
+                                            if (bluetoothSocket != null) {
+                                                sendData(payload)
+                                                appendLog("[AA -> Robot] Robot position adjusted: ($robotDirection, $validCol, $validRow)")
+                                            } else {
+                                                appendLog("[AA] Robot position adjusted: ($robotDirection, $validCol, $validRow)")
+                                            }
+                                            toast("Robot placed at ($validCol, $validRow)")
+                                        }
+                                    } else {
+                                        if (isRobotOverlapping(bottomLeftCol, bottomLeftRow)) {
+                                            v.x = originalX
+                                            v.y = originalY
+                                            toast("Robot placement blocked: overlaps obstacle, reverted to previous position")
+                                            overlapped = true
+                                        } else {
+                                            val (cx, cy) = gridView.cellCenterPixels(col, row)
+                                            v.x = gridView.x + cx - v.width / 2f
+                                            v.y = gridView.y + cy - v.height / 2f
+                                            robotCol = bottomLeftCol
+                                            robotRow = bottomLeftRow
+                                            val payload = "ROBOT,$bottomLeftCol,$bottomLeftRow,$robotDirection\n"
+                                            if (bluetoothSocket != null) {
+                                                sendData(payload)
+                                                appendLog("[AA -> Robot] Robot position: ($robotDirection, $bottomLeftCol, $bottomLeftRow)")
+                                            } else {
+                                                appendLog("[AA] Robot position: ($robotDirection, $bottomLeftCol, $bottomLeftRow)")
+                                            }
+                                            toast("Robot placed at ($bottomLeftCol, $bottomLeftRow)")
+                                        }
+                                    }
                                 }
-                                toast("Obstacle placed at (ID: $obstacleNumber, $col, $row)")
+                            } else {
+                                // 障碍物拖拽处理逻辑
+                                val cell = gridView.pixelToNearestCell(gridLocalX, gridLocalY)
+                                val (col, row) = cell
+                                // 检查是否与机器人重叠
+                                val robotCells = if (robotCol != null && robotRow != null) getRobotCells(robotCol!!, robotRow!!) else emptySet()
+                                if (robotCells.contains(Pair(col, row))) {
+                                    v.x = originalX
+                                    v.y = originalY
+                                    toast("Obstacle placement blocked: overlaps robot, reverted to previous position")
+                                    overlapped = true
+                                } else {
+                                    val (cx, cy) = gridView.cellCenterPixels(col, row)
+                                    v.x = gridView.x + cx - v.width / 2f
+                                    v.y = gridView.y + cy - v.height / 2f
+                                    val obstacleNumber = (v as? ObstacleView)?.getNumber() ?: 0
+                                    val direction = (v as? ObstacleView)?.getDirection() ?: currentObstacleDirection
+                                    val payload = "OBS,$obstacleNumber,$col,$row,$direction\n"
+                                    if (bluetoothSocket != null) {
+                                        sendData(payload)
+                                        appendLog("[AA -> Robot] Obstacle position: ($obstacleNumber, $col, $row, $direction)")
+                                    } else {
+                                        appendLog("[AA] Obstacle position: ($obstacleNumber, $col, $row, $direction)")
+                                    }
+                                    toast("Obstacle placed at (ID: $obstacleNumber, $col, $row)")
+                                }
                             }
                         }
+                        isDragging = false
                         true
                     }
                     else -> false
                 }
             } catch (e: Exception) {
-                Log.e("MainActivity", "Error in touch handling: ${e.message}")
+                Log.e("MainActivity", "Error in touch handling: "+e.message)
                 false
             }
         }
 
-        obstacle.setOnClickListener {
-            toast("Obstacle ${(obstacle as? ObstacleView)?.getNumber() ?: ""} clicked")
+        // 设置点击监听器
+        view.setOnClickListener {
+            if (isRobot) {
+                // 机器人点击处理
+                toast("Robot clicked")
+            } else {
+                // 障碍物点击处理
+                val obstacleView = view as? ObstacleView
+                if (obstacleView != null) {
+                    // 获取当前方向
+                    val currentDir = obstacleView.getDirection()
+                    // 顺时针旋转方向
+                    val newDirection = when (currentDir) {
+                        "N" -> "E"
+                        "E" -> "S"
+                        "S" -> "W"
+                        "W" -> "N"
+                        else -> "N"
+                    }
+
+                    // 更新障碍物方向
+                    obstacleView.setDirection(newDirection)
+
+                    // 通知用户
+                    val obstacleNumber = obstacleView.getNumber()
+                    toast("Obstacle $obstacleNumber now facing $newDirection")
+
+                    // 获取障碍物位置
+                    val centerX = view.x + view.width / 2f - gridView.x
+                    val centerY = view.y + view.height / 2f - gridView.y
+                    val cell = gridView.pixelToCell(centerX, centerY)
+
+                    // 如果有有效位置并且连接了蓝牙，发送更新
+                    if (cell != null && bluetoothSocket != null) {
+                        val (col, row) = cell
+                        val payload = "OBS,${obstacleNumber},${col},${row},${newDirection}\n"
+                        sendData(payload)
+                        appendLog("[AA -> Robot] Obstacle direction updated: ($obstacleNumber, $newDirection)")
+                    }
+                } else {
+                    toast("Obstacle clicked")
+                }
+            }
         }
+    }
+
+    // 处理机器人拖拽的专用函数
+    private fun handleRobotDrag(view: View, gridLocalX: Float, gridLocalY: Float) {
+        val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
+        if (cell == null) {
+            (view.parent as FrameLayout).removeView(view)
+            hasRobot = false
+            toast("Robot removed - dropped outside grid")
+        } else {
+            val (col, row) = cell
+            val bottomLeftCol = col - 1
+            val bottomLeftRow = row - 1
+
+            // 确保机器人不会超出边界
+            val colCount = gridView.cols
+            val rowCount = gridView.rows
+            if (bottomLeftCol < 0 || bottomLeftRow < 0 ||
+                bottomLeftCol > colCount - 3 || bottomLeftRow > rowCount - 3) {
+                // 获取有效的最近网格位置
+                val validCol = bottomLeftCol.coerceIn(0, colCount - 3)
+                val validRow = bottomLeftRow.coerceIn(0, rowCount - 3)
+
+                // 检查调整后的位置是否与障碍物重叠
+                if (isRobotOverlapping(validCol, validRow)) {
+                    (view.parent as FrameLayout).removeView(view)
+                    hasRobot = false
+                    appendLog("[Warning] Robot cannot be placed: overlaps obstacle!")
+                    toast("Robot placement blocked: overlaps obstacle")
+                    return
+                }
+
+                val (cx, cy) = gridView.cellCenterPixels(validCol + 1, validRow + 1)
+                val targetX = gridView.x + cx - view.width / 2f
+                val targetY = gridView.y + cy - view.height / 2f
+
+                view.x = targetX
+                view.y = targetY
+
+                // 更新机器人状态
+                robotCol = validCol
+                robotRow = validRow
+
+                val payload = "ROBOT,$validCol,$validRow,$robotDirection\n"
+                if (bluetoothSocket != null) {
+                    sendData(payload)
+                    appendLog("[AA -> Robot] Robot position adjusted: ($robotDirection, $validCol, $validRow)")
+                } else {
+                    appendLog("[AA] Robot position adjusted: ($robotDirection, $validCol, $validRow)")
+                }
+                toast("Robot placed at ($validCol, $validRow)")
+            } else {
+                // 检查是否与障碍物重叠
+                if (isRobotOverlapping(bottomLeftCol, bottomLeftRow)) {
+                    (view.parent as FrameLayout).removeView(view)
+                    hasRobot = false
+                    appendLog("[Warning] Robot cannot be placed: overlaps obstacle!")
+                    toast("Robot placement blocked: overlaps obstacle")
+                    return
+                }
+
+                val (cx, cy) = gridView.cellCenterPixels(col, row)
+                val targetX = gridView.x + cx - view.width / 2f
+                val targetY = gridView.y + cy - view.height / 2f
+
+                view.x = targetX
+                view.y = targetY
+
+                // 更新机器人状态
+                robotCol = bottomLeftCol
+                robotRow = bottomLeftRow
+
+                val payload = "ROBOT,$bottomLeftCol,$bottomLeftRow,$robotDirection\n"
+                if (bluetoothSocket != null) {
+                    sendData(payload)
+                    appendLog("[AA -> Robot] Robot position: ($robotDirection, $bottomLeftCol, $bottomLeftRow)")
+                } else {
+                    appendLog("[AA] Robot position: ($robotDirection, $bottomLeftCol, $bottomLeftRow)")
+                }
+                toast("Robot placed at ($bottomLeftCol, $bottomLeftRow)")
+            }
+        }
+    }
+
+    // 处理障碍物拖拽的专用函数
+    private fun handleObstacleDrag(view: View, gridLocalX: Float, gridLocalY: Float) {
+        // 使用pixelToNearestCell方法，确保总是能找到最近的有效格子
+        val cell = gridView.pixelToNearestCell(gridLocalX, gridLocalY)
+
+        // 获取目标位置
+        val (col, row) = cell
+        val (cx, cy) = gridView.cellCenterPixels(col, row)
+        val targetX = gridView.x + cx - view.width / 2f
+        val targetY = gridView.y + cy - view.height / 2f
+
+        // 将障碍物移动到目标位置
+        view.x = targetX
+        view.y = targetY
+
+        // 发送更新信息
+        val obstacleNumber = (view as? ObstacleView)?.getNumber() ?: 0
+        val direction = (view as? ObstacleView)?.getDirection() ?: currentObstacleDirection
+        val payload = "OBS,$obstacleNumber,$col,$row,$direction\n"
+        if (bluetoothSocket != null) {
+            sendData(payload)
+            appendLog("[AA -> Robot] Obstacle position: ($obstacleNumber, $col, $row, $direction)")
+        } else {
+            appendLog("[AA] Obstacle position: ($obstacleNumber, $col, $row, $direction)")
+        }
+        toast("Obstacle placed at (ID: $obstacleNumber, $col, $row)")
+    }
+
+    // 修改后的attachRobotDragHandler，调用通用函数
+    private fun attachRobotDragHandler(robot: View) {
+        attachDragHandler(robot, true)
+    }
+
+    // 修改后的attachDragHandlers，调用通用函数
+    private fun attachDragHandlers(obstacle: View) {
+        attachDragHandler(obstacle, false)
     }
     // endregion
 
