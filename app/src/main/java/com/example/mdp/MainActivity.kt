@@ -803,8 +803,31 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun processIncomingMessage(message: String) {
+        // Handle TARGET,<Obstacle Number>,<Target ID>[,<Direction>]
+        val trimmedMsg = message.trim()
+        if (trimmedMsg.startsWith("TARGET", ignoreCase = true)) {
+            val parts = trimmedMsg.split(",").map { it.trim() }
+            if (parts.size >= 3) {
+                val obstacleNumber = parts[1].toIntOrNull()
+                val targetId = parts[2]
+                val direction = if (parts.size >= 4) parts[3] else null
+                if (obstacleNumber != null) {
+                    // Find the obstacle view and update its target ID
+                    for (i in 0 until gridContainer.childCount) {
+                        val child = gridContainer.getChildAt(i)
+                        if (child is ObstacleView && child.getNumber() == obstacleNumber) {
+                            child.setTargetId(targetId, direction)
+                            appendLog("[System] Obstacle #$obstacleNumber set Target ID: $targetId" +
+                                (if (direction != null) " (Face: $direction)" else ""))
+                            break
+                        }
+                    }
+                }
+            }
+            return
+        }
         try {
-            val jsonObject = JSONObject(message.trim())
+            val jsonObject = JSONObject(trimmedMsg)
             if (jsonObject.has("status")) {
                 val status = jsonObject.getString("status").uppercase(Locale.ROOT)
                 updateRobotStatus(status)
