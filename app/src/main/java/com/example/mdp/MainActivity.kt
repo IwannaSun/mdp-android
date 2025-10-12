@@ -14,26 +14,25 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.text.method.ScrollingMovementMethod
-import android.view.DragEvent
-import android.view.View
+import android.util.Log
+import android.view.*
 import android.widget.*
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
+import org.json.JSONObject
 import java.io.IOException
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.time.Duration.Companion.seconds
-import android.util.Log
-import android.view.*
-import kotlin.math.roundToInt
-import org.json.JSONObject
-import java.util.Locale
 import kotlin.math.pow
+import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.seconds
 
 
 class MainActivity : ComponentActivity() {
@@ -55,6 +54,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var btnConnect: Button
     private lateinit var btnClear: Button
     private lateinit var btnSend: Button
+    private lateinit var btnReset: Button  // Added RESET button reference
     private lateinit var etMessage: EditText
     private lateinit var tvLog: TextView
     private lateinit var scrollView: ScrollView
@@ -78,6 +78,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var btnObstacleDirectionEast: Button
     private lateinit var btnObstacleDirectionSouth: Button
     private lateinit var btnObstacleDirectionWest: Button
+    private lateinit var btnStart: Button
+    private var isStarted = false
 
     // Current obstacle direction for palette
     private var currentObstacleDirection: String = "N"
@@ -109,6 +111,9 @@ class MainActivity : ComponentActivity() {
     private var robotRow: Int? = null // bottom-left row
     private var robotDirection: String = "N" // "N", "E", "S", "W"
 
+    // Obstacle buffer for sending obstacles at once
+    private val obstacleBuffer = mutableListOf<String>()
+
     // Robust Bluetooth Reconnection Logic
     private var reconnectJob: Job? = null
     private var lastConnectedDevice: BluetoothDevice? = null
@@ -125,6 +130,7 @@ class MainActivity : ComponentActivity() {
         btnConnect = findViewById(R.id.btnConnect)
         btnSend = findViewById(R.id.btnSend)
         btnClear = findViewById(R.id.btnClear)
+        btnReset = findViewById(R.id.btnReset)  // Initialize RESET button
         etMessage = findViewById(R.id.etMessage)
         tvLog = findViewById(R.id.tvLog)
         scrollView = findViewById(R.id.scrollView)
@@ -139,12 +145,33 @@ class MainActivity : ComponentActivity() {
         btnObstacleDirectionEast = findViewById(R.id.btn_obstacle_direction_east)
         btnObstacleDirectionSouth = findViewById(R.id.btn_obstacle_direction_south)
         btnObstacleDirectionWest = findViewById(R.id.btn_obstacle_direction_west)
+        btnStart = findViewById<Button>(R.id.btnStart)
+
+        // Initialize the Send OBS button
+        val btnSendOBS = findViewById<Button>(R.id.btnSendOBS)
+
 
         // Set up obstacle direction button listeners
         btnObstacleDirectionNorth.setOnClickListener { setObstacleDirection("N") }
         btnObstacleDirectionEast.setOnClickListener { setObstacleDirection("E") }
         btnObstacleDirectionSouth.setOnClickListener { setObstacleDirection("S") }
         btnObstacleDirectionWest.setOnClickListener { setObstacleDirection("W") }
+        btnStart.setOnClickListener { if (!isStarted) {
+            // Start逻辑
+            sendData("START")
+            btnStart.text = "Stop"
+            btnStart.setBackgroundColor(Color.RED)
+            isStarted = true
+        } else {
+            // Stop逻辑
+            sendData("STOP")
+            btnStart.text = "Start"
+            btnStart.setBackgroundColor(Color.parseColor("#4CAF23"))
+            isStarted = false}
+        }
+
+        // Set up the Send OBS button click listener
+        btnSendOBS.setOnClickListener { onSendObsClicked() }
 
         // Initialize the button colors
         updateDirectionButtonColors()
@@ -153,6 +180,7 @@ class MainActivity : ComponentActivity() {
         btnConnect.setOnClickListener { onConnectClicked() }
         btnSend.setOnClickListener { onSendClicked() }
         btnClear.setOnClickListener { onClearClicked() }
+        btnReset.setOnClickListener { onResetClicked() } // Add RESET button listener
 
         //Directional buttons
         btnUp = findViewById(R.id.btnUp)
@@ -163,12 +191,12 @@ class MainActivity : ComponentActivity() {
         btnRotateRight = findViewById(R.id.btnRotateRight)
 
         // Add button listeners
-        btnUp.setOnClickListener { moveRobot("f") }
-        btnDown.setOnClickListener { moveRobot("r") }
-        btnLeft.setOnClickListener { moveRobot("sl") }
-        btnRight.setOnClickListener { moveRobot("sr") }
-        btnRotateLeft.setOnClickListener { moveRobot("tl") }
-        btnRotateRight.setOnClickListener { moveRobot("tr") }
+        btnUp.setOnClickListener { moveRobot("FD=200\n") }
+        btnDown.setOnClickListener { moveRobot("BD=200\n") }
+        btnLeft.setOnClickListener { moveRobot("BL=45\n") }
+        btnRight.setOnClickListener { moveRobot("BR=45\n") }
+        btnRotateLeft.setOnClickListener { moveRobot("FL=45\n") }
+        btnRotateRight.setOnClickListener { moveRobot("FR=45\n") }
 
         gridContainer = findViewById(R.id.grid_view_container)
         gridView = GridWithAxesView(this)
@@ -279,11 +307,72 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun onSendClicked() {
+        // If there's text in the message field, send it
         val msg = etMessage.text.toString().trim()
-        if (msg.isEmpty()) return
-        sendData("$msg\n")
-        appendLog("[AA -> Robot] $msg")
-        etMessage.setText("")
+        if (msg.isNotEmpty()) {
+            sendData("$msg\n")
+            appendLog("[AA -> Robot] $msg")
+            etMessage.setText("")
+            return
+        }
+
+        // If no text in message field, send all buffered obstacles
+        if (obstacleBuffer.isNotEmpty()) {
+            // Send all obstacles in the buffer
+            val obsCount = obstacleBuffer.size
+            for (obs in obstacleBuffer) {
+                sendData(obs)
+            }
+            appendLog("[AA -> Robot] Sent $obsCount obstacles to robot")
+            toast("Sent $obsCount obstacles to robot")
+
+            // Clear the buffer after sending
+            obstacleBuffer.clear()
+        } else {
+            toast("No obstacles to send")
+        }
+    }
+
+    private fun onSendObsClicked() {
+        // This function is called when the Send OBS button is clicked
+        if (obstacleBuffer.isNotEmpty()) {
+            // Create a map to keep track of the latest info for each obstacle ID
+            val latestObstacleInfo = mutableMapOf<Int, String>()
+
+            // Process each entry in the buffer to extract the obstacle ID and keep only the latest entry
+            for (obsEntry in obstacleBuffer) {
+                if (obsEntry.startsWith("OBS,")) {
+                    val parts = obsEntry.split(",")
+                    if (parts.size >= 2) {
+                        try {
+                            val obstacleId = parts[1].toInt()
+                            latestObstacleInfo[obstacleId] = obsEntry
+                        } catch (e: NumberFormatException) {
+                            // Skip entries with invalid obstacle IDs
+                            appendLog("[Warning] Invalid obstacle entry: $obsEntry")
+                        }
+                    }
+                }
+            }
+
+            // Combine the latest obstacle information into a single message
+            val combinedObstacles = latestObstacleInfo.values.joinToString("")
+
+            if (combinedObstacles.isNotEmpty()) {
+                // Send the consolidated message in one go
+                sendData(combinedObstacles)
+
+                val obsCount = latestObstacleInfo.size
+                appendLog("[AA -> Robot] Sent $obsCount obstacles to robot")
+                toast("Sent $obsCount obstacles to robot")
+
+                // Note: Not clearing the buffer as requested
+            } else {
+                toast("No valid obstacle information to send")
+            }
+        } else {
+            toast("No obstacles to send")
+        }
     }
 
     private fun onClearClicked() {
@@ -293,6 +382,11 @@ class MainActivity : ComponentActivity() {
         clearRobot()
         nextObstacleId = 1
         updatePaletteLabel()
+
+        // Clear the obstacle buffer to prevent old data from being sent
+        obstacleBuffer.clear()
+        originalObstacleStates.clear()
+
         appendLog("[System] All obstacles and robot cleared")
     }
 
@@ -726,7 +820,22 @@ class MainActivity : ComponentActivity() {
             return null
         }
 
-        // Try secure connection first
+        // Try direct connection to RFCOMM channel 1 first (which is what RPi expects)
+        try {
+            appendLog("[Conn] Trying direct connection to RFCOMM channel 1...")
+            val m = device.javaClass.getMethod("createRfcommSocket", Int::class.java)
+            val channelSocket = m.invoke(device, 1) as BluetoothSocket
+            withTimeout(timeoutSeconds.seconds) {
+                channelSocket.connect()
+            }
+            appendLog("[Conn] Successfully connected to RFCOMM channel 1")
+            return channelSocket
+        } catch (e: Exception) {
+            appendLog("[Conn] Channel 1 connection failed: ${e.message}")
+            // Continue to other methods if this fails
+        }
+
+        // Try secure connection next
         val secureSocket = try {
             device.createRfcommSocketToServiceRecord(sppUuid)
         } catch (e: Exception) {
@@ -764,17 +873,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Try fallback method using reflection (last resort)
-        try {
-            appendLog("[Conn] Trying fallback method...")
-            val m = device.javaClass.getMethod("createRfcommSocket", Int::class.java)
-            val fallbackSocket = m.invoke(device, 1) as BluetoothSocket
-            withTimeout(timeoutSeconds.seconds) { fallbackSocket.connect() }
-            return fallbackSocket
-        } catch (e: Exception) {
-            appendLog("[Conn] Fallback method failed: ${e.message}")
-        }
-
         return null
     }
 
@@ -797,14 +895,29 @@ class MainActivity : ComponentActivity() {
         val socket = bluetoothSocket ?: return
         readJob = CoroutineScope(Dispatchers.IO).launch {
             val buffer = ByteArray(1024)
+            var partialMessage = "" // 用于存储不完整的消息
+
             try {
                 val input = socket.inputStream
                 while (isActive) {
                     val n = input.read(buffer)
                     if (n > 0) {
+                        // 将新读取的内容添加到partialMessage
                         val text = String(buffer, 0, n, Charsets.UTF_8)
-                        withContext(Dispatchers.Main) {
-                            processIncomingMessage(text)
+                        partialMessage += text
+
+                        // 检查是否包含完整的行（以\n结尾）
+                        while (partialMessage.contains('\n')) {
+                            val lineEndIndex = partialMessage.indexOf('\n')
+                            val completeLine = partialMessage.substring(0, lineEndIndex + 1) // 包含\n
+                            partialMessage = partialMessage.substring(lineEndIndex + 1) // 剩余部分
+
+                            // 只处理非空行
+                            if (completeLine.trim().isNotEmpty()) {
+                                withContext(Dispatchers.Main) {
+                                    processIncomingMessage(completeLine)
+                                }
+                            }
                         }
                     } else if (n < 0) {
                         throw IOException("Stream closed")
@@ -822,6 +935,52 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun processIncomingMessage(message: String) {
+        // 特殊处理STOP消息，重置Start按钮状态
+        if (message.trim().equals("STOP", ignoreCase = true)) {
+            runOnUiThread {
+                btnStart.text = "Start"
+                btnStart.setBackgroundColor(Color.parseColor("#4CAF23"))
+                isStarted = false
+                appendLog("[Robot -> AA] Received STOP command, reset button state")
+            }
+            return
+        }
+
+        // Special handling for TARGET messages to preserve the newline character
+        if (message.startsWith("TARGET,", ignoreCase = true)) {
+            try {
+                // Use message directly without trimming to preserve the \n at the end
+                val messageParts = message.split(",").map { it.trim() }
+                if (messageParts.size >= 3) {
+                    val obstacleNum = messageParts[1].toInt()
+                    // Get the target ID which might contain the newline at the end
+                    val targetId = messageParts[2] // Don't trim here to preserve possible newline
+
+                    // Find the ObstacleView with this number
+                    for (i in 0 until gridContainer.childCount) {
+                        val child = gridContainer.getChildAt(i)
+                        if (child is ObstacleView && child.getNumber() == obstacleNum) {
+                            // Store original obstacle number before setting target ID
+                            if (!originalObstacleStates.containsKey(child)) {
+                                originalObstacleStates[child] = obstacleNum
+                            }
+
+                            // Update obstacle with target ID (keeping the newline if present)
+                            child.setTargetId(targetId)
+                            appendLog("[System] Obstacle $obstacleNum updated with Target ID: $targetId")
+                            break
+                        }
+                    }
+                    return
+                }
+            } catch (e: Exception) {
+                appendLog("[System] Error parsing TARGET message: ${e.message}")
+                appendLog("[System] Raw TARGET message: '${message.replace("\n", "\\n")}'") // Show exact message with \n
+                return
+            }
+        }
+
+        // For all other messages, continue using the trimmed version
         val trimmedMessage = message.trim()
 
         // Handle ROBOT position update messages
@@ -863,29 +1022,6 @@ class MainActivity : ComponentActivity() {
             // 不是JSON或解析出错，按普通消息处理
         }
 
-        // Handle TARGET message: TARGET,<obstacle>,<target>
-        if (trimmedMessage.startsWith("TARGET,", ignoreCase = true)) {
-            try {
-                val parts = trimmedMessage.split(",").map { it.trim() }
-                if (parts.size >= 3) {
-                    val obstacleNum = parts[1].toInt()
-                    val targetId = parts[2]
-                    // Find the ObstacleView with this number
-                    for (i in 0 until gridContainer.childCount) {
-                        val child = gridContainer.getChildAt(i)
-                        if (child is ObstacleView && child.getNumber() == obstacleNum) {
-                            child.setTargetId(targetId)
-                            appendLog("[System] Obstacle $obstacleNum updated with Target ID: $targetId")
-                            break
-                        }
-                    }
-                    return
-                }
-            } catch (e: Exception) {
-                appendLog("[System] Error parsing TARGET message: ${e.message}")
-                return
-            }
-        }
 
         // Handle other messages
         appendLog("[Robot -> AA] $trimmedMessage")
@@ -1076,7 +1212,6 @@ class MainActivity : ComponentActivity() {
         return cells
     }
 
-    // Helper: Check if robot overlaps any obstacle
     private fun isRobotOverlapping(bottomLeftCol: Int, bottomLeftRow: Int): Boolean {
         val robotCells = getRobotCells(bottomLeftCol, bottomLeftRow)
         val obstacleCells = getObstaclePositions()
@@ -1087,11 +1222,20 @@ class MainActivity : ComponentActivity() {
         // Find the RobotView
         val robotView = (0 until gridContainer.childCount)
             .map { gridContainer.getChildAt(it) }
-            .find { it is RobotView } as? RobotView ?: run {
-            toast("Robot not placed on grid")
+            .find { it is RobotView } as? RobotView
+
+        // Always send command to robot if connected, regardless of whether robot is on grid
+        if (bluetoothSocket != null) {
+            sendData("$command\n")
+            // Removed logging: appendLog("[AA -> Robot] $command")
+        }
+
+        // If no robot on grid, just send command and return
+        if (robotView == null) {
+            // Removed logging for not connected case
             return
         }
-        // If first move, initialize state from view position
+
         if (robotCol == null || robotRow == null) {
             val centerX = robotView.x + robotView.width / 2f - gridView.x
             val centerY = robotView.y + robotView.height / 2f - gridView.y
@@ -1109,20 +1253,20 @@ class MainActivity : ComponentActivity() {
         var row = robotRow!!
         var dir = robotDirection
         when (command) {
-            "f" -> { // move forward
+            "FD=200\n" -> { // move forward (corrected to match button command)
                 when (dir) {
-                    "N" -> row += 1
-                    "E" -> col += 1
-                    "S" -> row -= 1
-                    "W" -> col -= 1
+                    "N" -> row += 2
+                    "E" -> col += 2
+                    "S" -> row -= 2
+                    "W" -> col -= 2
                 }
             }
-            "r" -> { // move backward
+            "BD=200\n" -> { // move backward (corrected to match button command)
                 when (dir) {
-                    "N" -> row -= 1
-                    "E" -> col -= 1
-                    "S" -> row += 1
-                    "W" -> col += 1
+                    "N" -> row -= 2
+                    "E" -> col -= 2
+                    "S" -> row += 2
+                    "W" -> col += 2
                 }
             }
             "tl" -> { // turn left
@@ -1185,15 +1329,7 @@ class MainActivity : ComponentActivity() {
             "W" -> 270f
             else -> 0f
         }
-        // Log position
-        val logMsg = "[Local] Robot position: ($dir, $col, $row)"
-        appendLog(logMsg)
-        // Send to robot if connected
-        if (bluetoothSocket != null) {
-            val payload = "ROBOT,$col,$row,$dir\n"
-            sendData(payload)
-            appendLog("[AA -> Robot] $command -> ($dir, $col, $row)")
-        }
+        // Removed position logging: appendLog("[Local] Robot position: ($dir, $col, $row)")
     }
 
     // region Drag and Drop Functions
@@ -1309,14 +1445,12 @@ class MainActivity : ComponentActivity() {
                 // 为障碍物添加拖拽处理
                 attachDragHandler(obstacleView, false)
 
-                // 发送障碍物信息
+                // 准备障碍物信息但不立即发送，而是存入缓冲区
                 val payload = "OBS,$nextObstacleId,$col,$row,$currentObstacleDirection\n"
-                if (bluetoothSocket != null) {
-                    sendData(payload)
-                    appendLog("[AA -> Robot] Obstacle created: ($nextObstacleId, $col, $row, $currentObstacleDirection)")
-                } else {
-                    appendLog("[AA] Obstacle created: ($nextObstacleId, $col, $row, $currentObstacleDirection)")
-                }
+
+                // 不再立即发送，而是添加到缓冲区
+                obstacleBuffer.add(payload)
+                appendLog("[AA] Obstacle created: ($nextObstacleId, $col, $row, $currentObstacleDirection)")
                 toast("Obstacle placed at (ID: $nextObstacleId, $col, $row)")
 
                 // 更新下一个障碍物ID
@@ -1384,31 +1518,33 @@ class MainActivity : ComponentActivity() {
                                 // 机器人拖拽处理逻辑
                                 val cell = gridView.pixelToCell(gridLocalX, gridLocalY)
                                 if (cell == null) {
-                                    // 拖出网格，回到原位
-                                    v.x = originalX
-                                    v.y = originalY
-                                    toast("Robot removed - dropped outside grid, reverted to previous position")
-                                    overlapped = true
+                                    // 拖出网格，移除机器人
+                                    gridContainer.removeView(v)
+                                    hasRobot = false
+                                    robotCol = null
+                                    robotRow = null
+                                    toast("Robot removed - dropped outside grid")
+                                    appendLog("[System] Robot removed by dragging outside grid")
                                 } else {
                                     val (col, row) = cell
                                     val bottomLeftCol = col - 1
                                     val bottomLeftRow = row - 1
                                     val colCount = gridView.cols
                                     val rowCount = gridView.rows
-                                    val validCol = bottomLeftCol.coerceIn(0, colCount - 3)
-                                    val validRow = bottomLeftRow.coerceIn(0, rowCount - 3)
                                     if (bottomLeftCol < 0 || bottomLeftRow < 0 ||
                                         bottomLeftCol > colCount - 3 || bottomLeftRow > rowCount - 3) {
-                                        // 边界外，检查重叠
+                                        // 边界外，需要调整到有效位置
+                                        val validCol = bottomLeftCol.coerceIn(0, colCount - 3)
+                                        val validRow = bottomLeftRow.coerceIn(0, rowCount - 3)
+
                                         if (isRobotOverlapping(validCol, validRow)) {
                                             v.x = originalX
                                             v.y = originalY
                                             toast("Robot placement blocked: overlaps obstacle, reverted to previous position")
-                                            overlapped = true
                                         } else {
                                             val (cx, cy) = gridView.cellCenterPixels(validCol + 1, validRow + 1)
-                                            v.x = gridView.x + cx - v.width / 2f
-                                            v.y = gridView.y + cy - v.height / 2f
+                                            v.x = cx - v.width / 2f
+                                            v.y = cy - v.height / 2f
                                             robotCol = validCol
                                             robotRow = validRow
                                             val payload = "ROBOT,$validCol,$validRow,$robotDirection\n"
@@ -1425,11 +1561,10 @@ class MainActivity : ComponentActivity() {
                                             v.x = originalX
                                             v.y = originalY
                                             toast("Robot placement blocked: overlaps obstacle, reverted to previous position")
-                                            overlapped = true
                                         } else {
                                             val (cx, cy) = gridView.cellCenterPixels(col, row)
-                                            v.x = gridView.x + cx - v.width / 2f
-                                            v.y = gridView.y + cy - v.height / 2f
+                                            v.x = cx - v.width / 2f
+                                            v.y = cy - v.height / 2f
                                             robotCol = bottomLeftCol
                                             robotRow = bottomLeftRow
                                             val payload = "ROBOT,$bottomLeftCol,$bottomLeftRow,$robotDirection\n"
@@ -1446,28 +1581,40 @@ class MainActivity : ComponentActivity() {
                             } else {
                                 // 障碍物拖拽处理逻辑
                                 val cell = gridView.pixelToNearestCell(gridLocalX, gridLocalY)
-                                val (col, row) = cell
-                                // 检查是否与机器人重叠
-                                val robotCells = if (robotCol != null && robotRow != null) getRobotCells(robotCol!!, robotRow!!) else emptySet()
-                                if (robotCells.contains(Pair(col, row))) {
-                                    v.x = originalX
-                                    v.y = originalY
-                                    toast("Obstacle placement blocked: overlaps robot, reverted to previous position")
-                                    overlapped = true
-                                } else {
-                                    val (cx, cy) = gridView.cellCenterPixels(col, row)
-                                    v.x = gridView.x + cx - v.width / 2f
-                                    v.y = gridView.y + cy - v.height / 2f
+
+                                // 检查是否超出网格边界
+                                if (gridLocalX < 0 || gridLocalY < 0 ||
+                                    gridLocalX > gridView.width || gridLocalY > gridView.height) {
+                                    // 拖出网格，移除障碍物
                                     val obstacleNumber = (v as? ObstacleView)?.getNumber() ?: 0
-                                    val direction = (v as? ObstacleView)?.getDirection() ?: currentObstacleDirection
-                                    val payload = "OBS,$obstacleNumber,$col,$row,$direction\n"
-                                    if (bluetoothSocket != null) {
-                                        sendData(payload)
-                                        appendLog("[AA -> Robot] Obstacle position: ($obstacleNumber, $col, $row, $direction)")
+                                    gridContainer.removeView(v)
+                                    toast("Obstacle $obstacleNumber removed - dropped outside grid")
+                                    appendLog("[System] Obstacle $obstacleNumber removed by dragging outside grid")
+
+                                    // 重新计算下一个障碍物ID
+                                    recalculateNextObstacleId()
+                                    updatePaletteLabel()
+                                } else {
+                                    val (col, row) = cell
+                                    // 检查是否与机器人重叠
+                                    val robotCells = if (robotCol != null && robotRow != null) getRobotCells(robotCol!!, robotRow!!) else emptySet()
+                                    if (robotCells.contains(Pair(col, row))) {
+                                        v.x = originalX
+                                        v.y = originalY
+                                        toast("Obstacle placement blocked: overlaps robot, reverted to previous position")
                                     } else {
+                                        val (cx, cy) = gridView.cellCenterPixels(col, row)
+                                        v.x = cx - v.width / 2f
+                                        v.y = cy - v.height / 2f
+                                        val obstacleNumber = (v as? ObstacleView)?.getNumber() ?: 0
+                                        val direction = (v as? ObstacleView)?.getDirection() ?: currentObstacleDirection
+                                        val payload = "OBS,$obstacleNumber,$col,$row,$direction\n"
+
+                                        // 添加到缓冲区而不是直接发送
+                                        obstacleBuffer.add(payload)
                                         appendLog("[AA] Obstacle position: ($obstacleNumber, $col, $row, $direction)")
+                                        toast("Obstacle placed at (ID: $obstacleNumber, $col, $row)")
                                     }
-                                    toast("Obstacle placed at (ID: $obstacleNumber, $col, $row)")
                                 }
                             }
                         }
@@ -1514,12 +1661,13 @@ class MainActivity : ComponentActivity() {
                     val centerY = view.y + view.height / 2f - gridView.y
                     val cell = gridView.pixelToCell(centerX, centerY)
 
-                    // 如果有有效位置并且连接了蓝牙，发送更新
-                    if (cell != null && bluetoothSocket != null) {
+                    // 如果有有效位置并且连接了蓝牙，添加到缓冲区而不是立即发送
+                    if (cell != null) {
                         val (col, row) = cell
                         val payload = "OBS,${obstacleNumber},${col},${row},${newDirection}\n"
-                        sendData(payload)
-                        appendLog("[AA -> Robot] Obstacle direction updated: ($obstacleNumber, $newDirection)")
+                        // 添加到缓冲区
+                        obstacleBuffer.add(payload)
+                        appendLog("[AA] Obstacle direction updated: ($obstacleNumber, $newDirection)")
                     }
                 } else {
                     toast("Obstacle clicked")
@@ -1809,14 +1957,10 @@ class MainActivity : ComponentActivity() {
             aclReceiver = null
         }
     }
-    // --- End Robust Bluetooth Reconnection Logic ---
-
-    // --- End Optimized Bluetooth Reconnection Logic ---
-    // region Obstacle Direction Control
     private fun setObstacleDirection(direction: String) {
         currentObstacleDirection = direction
         updateDirectionButtonColors()
-    // --- End Bluetooth Reconnection Logic ---
+
     }
     private fun updateDirectionButtonColors() {
         val greyColor = android.graphics.Color.parseColor("#CCCCCC")
@@ -1909,4 +2053,53 @@ class MainActivity : ComponentActivity() {
         appendLog("[Conn] All connection attempts failed")
         return null
     }
+
+    // Store original obstacle states before TARGET updates
+    private val originalObstacleStates = mutableMapOf<ObstacleView, Int>()
+
+    // region RESET button functionality
+    private fun onResetClicked() {
+        // Count of obstacles with stored original states
+        val restoredCount = originalObstacleStates.size
+
+        if (restoredCount > 0) {
+            // Restore the original states for obstacles that were updated by TARGET
+            for ((obstacleView, originalId) in originalObstacleStates) {
+                // Clear the target ID to restore original obstacle number display
+                obstacleView.setTargetId(null)
+
+                // Get the obstacle position to update the command
+                val centerX = obstacleView.x + obstacleView.width / 2f - gridView.x
+                val centerY = obstacleView.y + obstacleView.height / 2f - gridView.y
+                val cell = gridView.pixelToCell(centerX, centerY)
+
+                if (cell != null) {
+                    val (col, row) = cell
+                    val direction = obstacleView.getDirection()
+
+                    // Create and send updated obstacle info
+                    val payload = "OBS,$originalId,$col,$row,$direction\n"
+                    obstacleBuffer.add(payload)
+
+                    // Send to robot if connected
+                    if (bluetoothSocket != null) {
+                        sendData(payload)
+                    }
+
+                    appendLog("[System] Restored obstacle $originalId to original state")
+                }
+            }
+
+            // Request a UI refresh to ensure obstacle numbers are properly displayed
+            gridView.invalidate()
+
+            // Clear the original states map after restoration is complete
+            originalObstacleStates.clear()
+
+            toast("Restored ${restoredCount} obstacles to original state")
+        } else {
+            toast("No obstacles to restore")
+        }
+    }
+    // endregion
 }

@@ -14,6 +14,8 @@ class RobotView @JvmOverloads constructor(
 ) : View(context, attrs, defStyle) {
 
     private var direction: String = "N" // N, E, S, W
+    private var gridCol: Int = 0
+    private var gridRow: Int = 0
 
     private val robotDrawables = mapOf(
         "N" to ContextCompat.getDrawable(context, R.drawable.ic_robot_north),
@@ -46,6 +48,17 @@ class RobotView @JvmOverloads constructor(
     }
 
     fun getDirection(): String = direction
+
+    fun setGridPosition(col: Int, row: Int) {
+        gridCol = col
+        gridRow = row
+    }
+
+    fun getGridPosition(): Pair<Int, Int> {
+        return Pair(gridCol, gridRow)
+    }
+
+    fun getFacing(): String = direction
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
