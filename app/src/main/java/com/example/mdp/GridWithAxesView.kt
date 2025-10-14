@@ -29,8 +29,8 @@ class GridWithAxesView @JvmOverloads constructor(
     private val customTypeface: Typeface? = ResourcesCompat.getFont(context, R.font.minecraftbold)
 
     private val textPaint = Paint().apply {
-        color = Color.WHITE
-        textSize = 23f * resources.displayMetrics.density / 2f
+        color = Color.DKGRAY
+        textSize = 20f * resources.displayMetrics.density / 2f
         isAntiAlias = true
         typeface = customTypeface
     }

@@ -39,6 +39,7 @@
             android:text="MDP Project"
             android:textSize="20sp"
             android:textStyle="bold"
+            android:textColor="@color/black"
             android:fontFamily="@font/minecraftbold" />
 
         <!-- Existing content starts here -->
@@ -53,17 +54,9 @@
                 android:layout_width="69dp"
                 android:layout_height="35dp"
                 android:text="Clear"
+                android:textColor="@color/white"
+                android:background="@drawable/stoneblock"
                 android:fontFamily="@font/minecraftregular" />
-
-            <TextView
-                android:id="@+id/tvStatus"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:layout_weight="1"
-                android:textStyle="bold"
-                android:background="@drawable/black_outline_background"
-                android:fontFamily="@font/minecraftbold" />
         </LinearLayout>
 
 
@@ -131,7 +124,7 @@
             android:id="@+id/palette_container"
             android:layout_width="match_parent"
             android:layout_height="78dp"
-            android:background="#EFEFEF"
+            android:background="@drawable/woodbackground"
             android:gravity="start|center_vertical"
             android:orientation="horizontal"
             android:padding="8dp">
@@ -143,7 +136,7 @@
                 android:text="Start"
                 android:textSize="16sp"
                 android:textStyle="bold"
-                android:background="#4CAF23"
+                android:background="@drawable/grass_block"
                 android:layout_marginStart="20dp"
                 android:layout_marginEnd="20dp"
                 android:textColor="@android:color/white"
@@ -156,7 +149,7 @@
                 android:text="Send OBS"
                 android:textSize="16sp"
                 android:textStyle="bold"
-                android:background="#FF6B35"
+                android:background="@drawable/redstoneblock"
                 android:textColor="@android:color/white"
                 android:layout_marginEnd="20dp"
                 android:fontFamily="@font/minecraftbold" />
@@ -168,7 +161,7 @@
                 android:text="RESET"
                 android:textSize="16sp"
                 android:textStyle="bold"
-                android:background="#3F51B5"
+                android:background="@drawable/iceblock"
                 android:textColor="@android:color/white"
                 android:layout_marginEnd="20dp"
                 android:fontFamily="@font/minecraftbold" />
@@ -223,7 +216,7 @@
                             android:id="@+id/palette_obstacle_label"
                             android:layout_width="29dp"
                             android:layout_height="29dp"
-                            android:background="@android:color/black"
+                            android:background="@drawable/obsidianblock"
                             android:gravity="center"
                             android:text="1"
                             android:textColor="@android:color/white"
@@ -292,6 +285,7 @@
                 android:layout_height="180dp"
                 android:layout_weight="1"
                 android:background="@drawable/black_outline_background"
+                android:layout_marginLeft="10dp"
                 android:fillViewport="true"
                 android:padding="12dp">
 
@@ -300,10 +294,9 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:minHeight="40dp"
-                    android:background="#F8F8F8"
                     android:lineSpacingExtra="2dp"
                     android:textAppearance="?android:attr/textAppearanceSmall"
-                    android:textColor="#000000"
+                    android:textColor="#FFFFFF"
                     android:textIsSelectable="true"
                     android:fontFamily="@font/minecraftregular" />
             </ScrollView>
@@ -319,13 +312,16 @@
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal">
+                    android:orientation="horizontal"
+                    android:background="#474342">
 
                     <Button
                         android:id="@+id/btnRotateLeft"
                         android:layout_width="50dp"
                         android:layout_height="50dp"
-                        android:text="↖"
+                        android:text=""
+                        android:rotation="270"
+                        android:background="@drawable/arrowblock"
                         android:textSize="24sp"
                         android:fontFamily="@font/minecraftregular" />
 
@@ -333,7 +329,9 @@
                         android:id="@+id/btnUp"
                         android:layout_width="50dp"
                         android:layout_height="50dp"
-                        android:text="↑"
+                        android:text=""
+                        android:rotation="315"
+                        android:background="@drawable/arrowblock"
                         android:textSize="24sp"
                         android:fontFamily="@font/minecraftregular" />
 
@@ -341,7 +339,9 @@
                         android:id="@+id/btnRotateRight"
                         android:layout_width="50dp"
                         android:layout_height="50dp"
-                        android:text="↗"
+                        android:text=""
+                        android:rotation="0"
+                        android:background="@drawable/arrowblock"
                         android:textSize="24sp"
                         android:fontFamily="@font/minecraftregular" />
                 </LinearLayout>
@@ -350,13 +350,16 @@
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal">
+                    android:orientation="horizontal"
+                    android:background="#474342">
 
                     <Button
                         android:id="@+id/btnLeft"
                         android:layout_width="50dp"
                         android:layout_height="50dp"
-                        android:text="↙"
+                        android:text=""
+                        android:rotation="180"
+                        android:background="@drawable/arrowblock"
                         android:textSize="24sp"
                         android:fontFamily="@font/minecraftregular" />
 
@@ -364,7 +367,9 @@
                         android:id="@+id/btnDown"
                         android:layout_width="50dp"
                         android:layout_height="50dp"
-                        android:text="↓"
+                        android:text=""
+                        android:rotation="135"
+                        android:background="@drawable/arrowblock"
                         android:textSize="24sp"
                         android:fontFamily="@font/minecraftregular" />
 
@@ -372,7 +377,9 @@
                         android:id="@+id/btnRight"
                         android:layout_width="50dp"
                         android:layout_height="50dp"
-                        android:text="↘"
+                        android:text=""
+                        android:rotation="90"
+                        android:background="@drawable/arrowblock"
                         android:textSize="24sp"
                         android:fontFamily="@font/minecraftregular" />
 
@@ -399,10 +406,11 @@
 
             <Button
                 android:id="@+id/btnSend"
-                android:layout_width="wrap_content"
+                android:layout_width="100dp"
                 android:layout_height="36dp"
                 android:layout_marginStart="8dp"
                 android:text="Send"
+                android:background="@drawable/stoneblock"
                 android:fontFamily="@font/minecraftbold" />
         </LinearLayout>
 
@@ -410,7 +418,7 @@
             android:id="@+id/bottomBar"
             android:layout_width="match_parent"
             android:layout_height="40dp"
-            android:background="#EEEEEE"
+            android:background="@drawable/woodbackground"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingStart="16dp"
@@ -433,9 +441,10 @@
 
             <Button
                 android:id="@+id/btnConnect"
-                android:layout_width="wrap_content"
-                android:layout_height="35dp"
+                android:layout_width="100dp"
+                android:layout_height="30dp"
                 android:text="Connect"
+                android:background="@drawable/stoneblock"
                 android:fontFamily="@font/minecraftregular" />
         </LinearLayout>
     </LinearLayout>

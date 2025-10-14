@@ -2,6 +2,7 @@ package com.example.mdp
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -22,6 +23,9 @@ class ObstacleView @JvmOverloads constructor(
 
     private val regularTypeface: Typeface? = ResourcesCompat.getFont(context, R.font.minecraftregular)
     private val boldTypeface: Typeface? = ResourcesCompat.getFont(context, R.font.minecraftbold)
+
+    // Load obsidian block texture
+    private val obsidianBitmap: Bitmap = BitmapFactory.decodeResource(context.resources, R.drawable.obsidianblock)
 
     fun setNumber(n: Int) {
         number = n
@@ -57,7 +61,7 @@ class ObstacleView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val paint = Paint().apply { color = Color.BLACK }
+
         val textPaint = Paint().apply {
             color = Color.WHITE
             textSize = 12f
@@ -80,14 +84,16 @@ class ObstacleView @JvmOverloads constructor(
             canvas.restoreToCount(saveCount)
         }
 
-        // Draw the main obstacle rectangle if no background image
+        // Draw the main obstacle with obsidian texture if no background image
         if (backgroundBitmap == null) {
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+            // Draw obsidian texture scaled to fit the view
+            val destRect = Rect(0, 0, width, height)
+            canvas.drawBitmap(obsidianBitmap, null, destRect, null)
         }
 
         // Draw the target ID or obstacle number
         val xPos = width / 2f
-        val yPos = (height / 2f) - ((textPaint.descent() + textPaint.ascent()) / 2) +1f
+        val yPos = (height / 2f) - ((textPaint.descent() + textPaint.ascent()) / 2) + 1f
         if (targetId != null) {
             val targetPaint = Paint().apply {
                 color = Color.WHITE
