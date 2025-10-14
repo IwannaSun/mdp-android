@@ -1,402 +1,442 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:fitsSystemWindows="true">
+    android:layout_height="match_parent">
 
-    <!-- Top border (adjust color as needed) -->
-    <View
+    <!-- Background ImageView with centerCrop -->
+    <ImageView
         android:layout_width="match_parent"
-        android:layout_height="3dp"
-        android:background="@color/colorPrimary" />
+        android:layout_height="match_parent"
+        android:src="@drawable/background_image"
+        android:scaleType="centerCrop"
+        android:contentDescription="Background Image" />
 
-    <!-- Title bar -->
-    <TextView
-        android:id="@+id/titleBar"
-        android:layout_width="match_parent"
-        android:layout_height="37dp"
-        android:background="@drawable/black_outline_background"
-        android:elevation="4dp"
-        android:gravity="center"
-        android:paddingTop="8dp"
-        android:paddingBottom="2dp"
-        android:text="MDP Project"
-        android:textSize="20sp"
-        android:textStyle="bold" />
-
-    <!-- Existing content starts here -->
+    <!-- Main content layout -->
     <LinearLayout
+        android:id="@+id/root"
         android:layout_width="match_parent"
-        android:layout_height="41dp"
-        android:orientation="horizontal"
-        android:padding="4dp">
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:fitsSystemWindows="true">
 
-        <Button
-            android:id="@+id/btnClear"
-            android:layout_width="69dp"
-            android:layout_height="35dp"
-            android:text="Clear" />
+        <!-- Top border (adjust color as needed) -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:background="@color/colorPrimary" />
 
+        <!-- Title bar -->
         <TextView
-            android:id="@+id/tvStatus"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="16dp"
-            android:layout_weight="1"
-            android:textStyle="bold"
-            android:background="@drawable/black_outline_background" />
-    </LinearLayout>
-
-
-    <!-- New parent LinearLayout for ScrollView and Controller buttons -->
-
-    <!-- Grid container and Status container in horizontal layout -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="450dp"
-        android:orientation="horizontal"
-        android:layout_marginTop="0dp"
-        android:layout_marginBottom="0dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp">
-
-        <!-- Grid container - now a FrameLayout that will contain the GridWithAxesView -->
-        <FrameLayout
-            android:id="@+id/grid_view_container"
-            android:layout_width="0dp"
-            android:layout_weight="3"
-            android:layout_height="match_parent"
-            android:layout_gravity="center" />
-
-        <!-- Status container -->
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:layout_height="80dp"
-            android:layout_marginStart="8dp"
-            android:orientation="vertical"
+            android:id="@+id/titleBar"
+            android:layout_width="match_parent"
+            android:layout_height="37dp"
             android:background="@drawable/black_outline_background"
+            android:elevation="4dp"
+            android:gravity="center"
+            android:paddingTop="8dp"
+            android:paddingBottom="2dp"
+            android:text="MDP Project"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:fontFamily="@font/minecraftbold" />
+
+        <!-- Existing content starts here -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="41dp"
+            android:orientation="horizontal"
+            android:padding="4dp">
+
+            <Button
+                android:id="@+id/btnClear"
+                android:layout_width="69dp"
+                android:layout_height="35dp"
+                android:text="Clear"
+                android:fontFamily="@font/minecraftregular" />
+
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_weight="1"
+                android:textStyle="bold"
+                android:background="@drawable/black_outline_background"
+                android:fontFamily="@font/minecraftbold" />
+        </LinearLayout>
+
+
+        <!-- New parent LinearLayout for ScrollView and Controller buttons -->
+
+        <!-- Grid container and Status container in horizontal layout -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="500dp"
+            android:orientation="horizontal"
+            android:layout_marginTop="0dp"
+            android:layout_marginBottom="0dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp">
+
+            <!-- Grid container - now a FrameLayout that will contain the GridWithAxesView -->
+            <FrameLayout
+                android:id="@+id/grid_view_container"
+                android:layout_width="0dp"
+                android:layout_weight="3"
+                android:layout_height="match_parent"
+                android:layout_gravity="center" />
+
+            <!-- Status container -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="80dp"
+                android:layout_marginStart="8dp"
+                android:orientation="vertical"
+                android:background="@drawable/black_outline_background"
+                android:padding="8dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="STATUS"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:gravity="center"
+                    android:textColor="@android:color/black"
+                    android:fontFamily="@font/minecraftbold" />
+
+                <TextView
+                    android:id="@+id/tvRobotStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:layout_marginTop="4dp"
+                    android:textSize="14sp"
+                    android:gravity="center"
+                    android:text="--"
+                    android:textColor="@android:color/holo_green_dark"
+                    android:maxLines="2"
+                    android:ellipsize="end"
+                    android:autoSizeTextType="uniform"
+                    android:autoSizeMinTextSize="8sp"
+                    android:autoSizeMaxTextSize="14sp"
+                    android:autoSizeStepGranularity="1sp"
+                    android:fontFamily="@font/minecraftregular" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/palette_container"
+            android:layout_width="match_parent"
+            android:layout_height="78dp"
+            android:background="#EFEFEF"
+            android:gravity="start|center_vertical"
+            android:orientation="horizontal"
             android:padding="8dp">
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="STATUS"
-                android:textStyle="bold"
+            <Button
+                android:id="@+id/btnStart"
+                android:layout_width="100dp"
+                android:layout_height="50dp"
+                android:text="Start"
                 android:textSize="16sp"
-                android:gravity="center"
-                android:textColor="@android:color/black"/>
+                android:textStyle="bold"
+                android:background="#4CAF23"
+                android:layout_marginStart="20dp"
+                android:layout_marginEnd="20dp"
+                android:textColor="@android:color/white"
+                android:fontFamily="@font/minecraftbold" />
 
-            <TextView
-                android:id="@+id/tvRobotStatus"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:layout_marginTop="4dp"
-                android:textSize="14sp"
-                android:gravity="center"
-                android:text="--"
-                android:textColor="@android:color/holo_green_dark"
-                android:maxLines="2"
-                android:ellipsize="end"
-                android:autoSizeTextType="uniform"
-                android:autoSizeMinTextSize="8sp"
-                android:autoSizeMaxTextSize="14sp"
-                android:autoSizeStepGranularity="1sp" />
-        </LinearLayout>
-    </LinearLayout>
+            <Button
+                android:id="@+id/btnSendOBS"
+                android:layout_width="100dp"
+                android:layout_height="50dp"
+                android:text="Send OBS"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:background="#FF6B35"
+                android:textColor="@android:color/white"
+                android:layout_marginEnd="20dp"
+                android:fontFamily="@font/minecraftbold" />
 
-    <LinearLayout
-        android:id="@+id/palette_container"
-        android:layout_width="match_parent"
-        android:layout_height="78dp"
-        android:background="#EFEFEF"
-        android:gravity="start|center_vertical"
-        android:orientation="horizontal"
-        android:padding="8dp">
+            <Button
+                android:id="@+id/btnReset"
+                android:layout_width="100dp"
+                android:layout_height="50dp"
+                android:text="RESET"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:background="#3F51B5"
+                android:textColor="@android:color/white"
+                android:layout_marginEnd="20dp"
+                android:fontFamily="@font/minecraftbold" />
 
-        <Button
-            android:id="@+id/btnStart"
-            android:layout_width="100dp"
-            android:layout_height="50dp"
-            android:text="Start"
-            android:textSize="20dp"
-            android:background="#4CAF23"
-            android:layout_marginStart="20dp"
-            android:layout_marginEnd="20dp"/>
-
-        <Button
-            android:id="@+id/btnSendOBS"
-            android:layout_width="100dp"
-            android:layout_height="50dp"
-            android:text="Send OBS"
-            android:textSize="16dp"
-            android:background="#FF6B35"
-            android:textColor="@android:color/white"
-            android:layout_marginEnd="20dp"/>
-
-        <Button
-            android:id="@+id/btnReset"
-            android:layout_width="100dp"
-            android:layout_height="50dp"
-            android:text="RESET"
-            android:textSize="16dp"
-            android:background="#3F51B5"
-            android:textColor="@android:color/white"
-            android:layout_marginEnd="20dp"/>
-
-        <!-- Palette区：直接拖动障碍物编号标签 -->
-        <LinearLayout
-            android:id="@+id/palette_obstacle_row"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <!-- Obstacle with direction buttons layout -->
+            <!-- Palette区：直接拖动障碍物编号标签 -->
             <LinearLayout
+                android:id="@+id/palette_obstacle_row"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="6dp"
-                android:orientation="vertical"
-                android:gravity="center">
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
 
-                <!-- Top row: North button -->
-                <Button
-                    android:id="@+id/btn_obstacle_direction_north"
-                    android:layout_width="24dp"
-                    android:layout_height="8dp"
-                    android:layout_marginBottom="1dp"
-                    android:background="#FFD700"
-                    android:minWidth="0dp"
-                    android:minHeight="0dp"
-                    android:padding="0dp" />
-
-                <!-- Middle row: West + Obstacle + East -->
+                <!-- Obstacle with direction buttons layout -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
+                    android:layout_marginEnd="6dp"
+                    android:orientation="vertical"
+                    android:gravity="center">
 
-                    <!-- Left (West) button -->
+                    <!-- Top row: North button -->
                     <Button
-                        android:id="@+id/btn_obstacle_direction_west"
-                        android:layout_width="8dp"
-                        android:layout_height="24dp"
-                        android:layout_marginEnd="1dp"
-                        android:background="#CCCCCC"
+                        android:id="@+id/btn_obstacle_direction_north"
+                        android:layout_width="24dp"
+                        android:layout_height="8dp"
+                        android:layout_marginBottom="1dp"
+                        android:background="#FFD700"
                         android:minWidth="0dp"
                         android:minHeight="0dp"
                         android:padding="0dp" />
 
-                    <!-- Center obstacle label -->
-                    <TextView
-                        android:id="@+id/palette_obstacle_label"
-                        android:layout_width="29dp"
-                        android:layout_height="29dp"
-                        android:background="@android:color/black"
-                        android:gravity="center"
-                        android:text="1"
-                        android:textColor="@android:color/white"
-                        android:textSize="16sp" />
+                    <!-- Middle row: West + Obstacle + East -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
 
-                    <!-- Right (East) button -->
+                        <!-- Left (West) button -->
+                        <Button
+                            android:id="@+id/btn_obstacle_direction_west"
+                            android:layout_width="8dp"
+                            android:layout_height="24dp"
+                            android:layout_marginEnd="1dp"
+                            android:background="#CCCCCC"
+                            android:minWidth="0dp"
+                            android:minHeight="0dp"
+                            android:padding="0dp" />
+
+                        <!-- Center obstacle label -->
+                        <TextView
+                            android:id="@+id/palette_obstacle_label"
+                            android:layout_width="29dp"
+                            android:layout_height="29dp"
+                            android:background="@android:color/black"
+                            android:gravity="center"
+                            android:text="1"
+                            android:textColor="@android:color/white"
+                            android:textSize="16sp"
+                            android:fontFamily="@font/minecraftbold" />
+
+                        <!-- Right (East) button -->
+                        <Button
+                            android:id="@+id/btn_obstacle_direction_east"
+                            android:layout_width="8dp"
+                            android:layout_height="24dp"
+                            android:layout_marginStart="1dp"
+                            android:background="#CCCCCC"
+                            android:minWidth="0dp"
+                            android:minHeight="0dp"
+                            android:padding="0dp" />
+
+                    </LinearLayout>
+
+                    <!-- Bottom row: South button -->
                     <Button
-                        android:id="@+id/btn_obstacle_direction_east"
-                        android:layout_width="8dp"
-                        android:layout_height="24dp"
-                        android:layout_marginStart="1dp"
-                        android:background="#CCCCCC"
-                        android:minWidth="0dp"
+                        android:id="@+id/btn_obstacle_direction_south"
+                        android:layout_width="24dp"
+                        android:layout_height="8dp"
+                        android:layout_marginTop="1dp"
                         android:minHeight="0dp"
-                        android:padding="0dp" />
+                        android:padding="0dp"
+                        android:background="#CCCCCC"/>
 
                 </LinearLayout>
 
-                <!-- Bottom row: South button -->
-                <Button
-                    android:id="@+id/btn_obstacle_direction_south"
-                    android:layout_width="24dp"
-                    android:layout_height="8dp"
-                    android:layout_marginTop="1dp"
-                    android:minHeight="0dp"
-                    android:padding="0dp"
-                    android:background="#CCCCCC"/>
+            </LinearLayout>
 
+            <!-- Robot palette item -->
+            <LinearLayout
+                android:id="@+id/palette_robot_row"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginStart="16dp">
+
+                <ImageView
+                    android:id="@+id/palette_robot_image"
+                    android:layout_width="55dp"
+                    android:layout_height="55dp"
+                    android:layout_marginEnd="0dp"
+                    android:src="@drawable/ic_robot_north"
+                    android:scaleType="fitCenter"
+                    android:background="@drawable/grass_block"
+                    android:contentDescription="Draggable Robot" />
             </LinearLayout>
 
         </LinearLayout>
 
-        <!-- Robot palette item -->
         <LinearLayout
-            android:id="@+id/palette_robot_row"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="bottom"
+            android:orientation="horizontal">
+
+            <ScrollView
+                android:id="@+id/scrollView"
+                android:layout_width="214dp"
+                android:layout_height="180dp"
+                android:layout_weight="1"
+                android:background="@drawable/black_outline_background"
+                android:fillViewport="true"
+                android:padding="12dp">
+
+                <TextView
+                    android:id="@+id/tvLog"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="40dp"
+                    android:background="#F8F8F8"
+                    android:lineSpacingExtra="2dp"
+                    android:textAppearance="?android:attr/textAppearanceSmall"
+                    android:textColor="#000000"
+                    android:textIsSelectable="true"
+                    android:fontFamily="@font/minecraftregular" />
+            </ScrollView>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <!-- Top row with Rotate Left, Up button, and Rotate Right -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnRotateLeft"
+                        android:layout_width="50dp"
+                        android:layout_height="50dp"
+                        android:text="↖"
+                        android:textSize="24sp"
+                        android:fontFamily="@font/minecraftregular" />
+
+                    <Button
+                        android:id="@+id/btnUp"
+                        android:layout_width="50dp"
+                        android:layout_height="50dp"
+                        android:text="↑"
+                        android:textSize="24sp"
+                        android:fontFamily="@font/minecraftregular" />
+
+                    <Button
+                        android:id="@+id/btnRotateRight"
+                        android:layout_width="50dp"
+                        android:layout_height="50dp"
+                        android:text="↗"
+                        android:textSize="24sp"
+                        android:fontFamily="@font/minecraftregular" />
+                </LinearLayout>
+
+                <!-- Middle row -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnLeft"
+                        android:layout_width="50dp"
+                        android:layout_height="50dp"
+                        android:text="↙"
+                        android:textSize="24sp"
+                        android:fontFamily="@font/minecraftregular" />
+
+                    <Button
+                        android:id="@+id/btnDown"
+                        android:layout_width="50dp"
+                        android:layout_height="50dp"
+                        android:text="↓"
+                        android:textSize="24sp"
+                        android:fontFamily="@font/minecraftregular" />
+
+                    <Button
+                        android:id="@+id/btnRight"
+                        android:layout_width="50dp"
+                        android:layout_height="50dp"
+                        android:text="↘"
+                        android:textSize="24sp"
+                        android:fontFamily="@font/minecraftregular" />
+
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginStart="16dp">
+            android:padding="8dp">
 
-            <ImageView
-                android:id="@+id/palette_robot_image"
-                android:layout_width="55dp"
-                android:layout_height="55dp"
-                android:layout_marginEnd="0dp"
-                android:src="@drawable/ic_robot_north"
-                android:scaleType="fitCenter"
-                android:background="@color/black"
-                android:contentDescription="Draggable Robot" />
+            <EditText
+                android:id="@+id/etMessage"
+                android:layout_width="2dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+
+                android:hint=" Type message"
+                android:background="@drawable/black_outline_background"
+                android:fontFamily="@font/minecraftregular"
+                android:textColor="@color/white"/>
+
+            <Button
+                android:id="@+id/btnSend"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="8dp"
+                android:text="Send"
+                android:fontFamily="@font/minecraftbold" />
         </LinearLayout>
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:gravity="bottom"
-        android:orientation="horizontal">
-
-        <ScrollView
-            android:id="@+id/scrollView"
-            android:layout_width="214dp"
-            android:layout_height="180dp"
-            android:layout_weight="1"
-            android:background="@drawable/black_outline_background"
-            android:fillViewport="true"
-            android:padding="12dp">
-
-            <TextView
-                android:id="@+id/tvLog"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="40dp"
-                android:background="#F8F8F8"
-                android:lineSpacingExtra="2dp"
-                android:textAppearance="?android:attr/textAppearanceSmall"
-                android:textColor="#000000"
-                android:textIsSelectable="true" />
-        </ScrollView>
 
         <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="end"
-            android:orientation="vertical"
-            android:padding="16dp">
+            android:id="@+id/bottomBar"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:background="#EEEEEE"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
 
-            <!-- Top row with Rotate Left, Up button, and Rotate Right -->
-            <LinearLayout
+            <ImageView
+                android:id="@+id/bottomIcon"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="Bluetooth"
+                android:src="@android:drawable/stat_sys_data_bluetooth" />
+
+            <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                android:layout_marginStart="8dp"
+                android:text="Bluetooth"
+                android:textStyle="bold"
+                android:fontFamily="@font/minecraftbold" />
 
-                <Button
-                    android:id="@+id/btnRotateLeft"
-                    android:layout_width="50dp"
-                    android:layout_height="50dp"
-                    android:text="↖"
-                    android:textSize="24sp" />
-
-                <Button
-                    android:id="@+id/btnUp"
-                    android:layout_width="50dp"
-                    android:layout_height="50dp"
-                    android:text="↑"
-                    android:textSize="24sp" />
-
-                <Button
-                    android:id="@+id/btnRotateRight"
-                    android:layout_width="50dp"
-                    android:layout_height="50dp"
-                    android:text="↗"
-                    android:textSize="24sp" />
-            </LinearLayout>
-
-            <!-- Middle row -->
-            <LinearLayout
+            <Button
+                android:id="@+id/btnConnect"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/btnLeft"
-                    android:layout_width="50dp"
-                    android:layout_height="50dp"
-                    android:text="↙"
-                    android:textSize="24sp" />
-
-                <Button
-                    android:id="@+id/btnDown"
-                    android:layout_width="50dp"
-                    android:layout_height="50dp"
-                    android:text="↓"
-                    android:textSize="24sp" />
-
-                <Button
-                    android:id="@+id/btnRight"
-                    android:layout_width="50dp"
-                    android:layout_height="50dp"
-                    android:text="↘"
-                    android:textSize="24sp" />
-
-            </LinearLayout>
+                android:layout_height="35dp"
+                android:text="Connect"
+                android:fontFamily="@font/minecraftregular" />
         </LinearLayout>
     </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="8dp">
-
-        <EditText
-            android:id="@+id/etMessage"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="Type message"
-            android:background="@drawable/black_outline_background" />
-
-        <Button
-            android:id="@+id/btnSend"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:layout_marginStart="8dp"
-            android:text="Send" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/bottomBar"
-        android:layout_width="match_parent"
-        android:layout_height="40dp"
-        android:background="#EEEEEE"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp">
-
-        <ImageView
-            android:id="@+id/bottomIcon"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:contentDescription="Bluetooth"
-            android:src="@android:drawable/stat_sys_data_bluetooth" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="Bluetooth"
-            android:textStyle="bold" />
-
-        <Button
-            android:id="@+id/btnConnect"
-            android:layout_width="wrap_content"
-            android:layout_height="35dp"
-            android:text="Connect" />
-    </LinearLayout>
-</LinearLayout>
+</FrameLayout>

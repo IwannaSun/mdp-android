@@ -9,6 +9,7 @@ import android.graphics.Rect
 import android.graphics.Typeface
 import android.util.AttributeSet
 import android.view.View
+import androidx.core.content.res.ResourcesCompat
 
 class ObstacleView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
@@ -18,6 +19,9 @@ class ObstacleView @JvmOverloads constructor(
     private var direction: String = "N" // N, E, S, W
     private var targetId: String? = null
     private var backgroundBitmap: Bitmap? = null
+
+    private val regularTypeface: Typeface? = ResourcesCompat.getFont(context, R.font.minecraftregular)
+    private val boldTypeface: Typeface? = ResourcesCompat.getFont(context, R.font.minecraftbold)
 
     fun setNumber(n: Int) {
         number = n
@@ -59,7 +63,7 @@ class ObstacleView @JvmOverloads constructor(
             textSize = 12f
             textAlign = Paint.Align.CENTER
             isAntiAlias = true
-            typeface = Typeface.DEFAULT
+            typeface = regularTypeface
             strokeWidth = 1f
         }
 
@@ -90,7 +94,7 @@ class ObstacleView @JvmOverloads constructor(
                 textSize = 20f
                 textAlign = Paint.Align.CENTER
                 isAntiAlias = true
-                typeface = Typeface.create(Typeface.DEFAULT_BOLD, Typeface.BOLD)
+                typeface = boldTypeface
                 strokeWidth = 2f
             }
             canvas.drawText(targetId!!, xPos, yPos, targetPaint)

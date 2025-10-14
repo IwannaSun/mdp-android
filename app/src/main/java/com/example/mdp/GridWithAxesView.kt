@@ -4,9 +4,17 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.util.AttributeSet
 import android.view.View
 import kotlin.math.min
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.BitmapShader
+import android.graphics.Shader
+import androidx.core.content.res.ResourcesCompat
+import kotlin.text.toFloat
+import kotlin.text.toInt
 
 class GridWithAxesView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyle: Int = 0
@@ -14,14 +22,17 @@ class GridWithAxesView @JvmOverloads constructor(
 
     private val gridPaint = Paint().apply {
         color = Color.BLACK
-        strokeWidth = 2f
+        strokeWidth = 3f
         isAntiAlias = true
     }
 
+    private val customTypeface: Typeface? = ResourcesCompat.getFont(context, R.font.minecraftbold)
+
     private val textPaint = Paint().apply {
-        color = Color.BLACK
-        textSize = 28f * resources.displayMetrics.density / 2f
+        color = Color.WHITE
+        textSize = 23f * resources.displayMetrics.density / 2f
         isAntiAlias = true
+        typeface = customTypeface
     }
 
     var rows = 20
@@ -32,6 +43,17 @@ class GridWithAxesView @JvmOverloads constructor(
     private var gridLeft = 0f
     private var gridTop = 0f
     private var gridSizePx = 0f
+    private var grassBitmap: Bitmap? = null
+    private val grassPaint: Paint
+
+    init {
+        val grassBitmap = BitmapFactory.decodeResource(resources, R.drawable.grass_block)
+        val shader = BitmapShader(grassBitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+        grassPaint = Paint().apply {
+            isAntiAlias = true
+            this.shader = shader
+        }
+    }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         computeGridMetrics(w, h)
@@ -40,16 +62,36 @@ class GridWithAxesView @JvmOverloads constructor(
     private fun computeGridMetrics(w: Int, h: Int) {
         // leave room for labels outside - x labels below, y labels on left
         val available = min(w, h)
-        cellSizePx = available.toFloat() / (rows + 3) // +3 leaves more margin for bottom labels
+        cellSizePx = available.toFloat() / (rows + 1) // +3 leaves more margin for bottom labels
         gridSizePx = cellSizePx * rows
         gridLeft = cellSizePx // one cell offset for left labels
         gridTop = cellSizePx  // one cell offset for top margin
     }
 
     override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        // ensure metrics
+        super.onDraw(canvas) // ensure metrics
         computeGridMetrics(width, height)
+
+        val textureWidth = cellSizePx.toInt()  // Change this value
+        val textureHeight = cellSizePx.toInt() // Change this value
+
+        if (grassBitmap == null ||
+            grassBitmap!!.width != textureWidth ||
+            grassBitmap!!.height != textureHeight) {
+            val originalBitmap = BitmapFactory.decodeResource(resources, R.drawable.grass_block)
+            grassBitmap = Bitmap.createScaledBitmap(
+                originalBitmap,
+                textureWidth,
+                textureHeight,
+                true
+            )
+            val shader = BitmapShader(grassBitmap!!, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+            grassPaint.shader = shader
+        }
+
+        // Draw background only within the grid area, not the entire view
+        canvas.drawRect(gridLeft, gridTop, gridLeft + gridSizePx, gridTop + gridSizePx, grassPaint)
+
 
         // vertical lines
         for (i in 0..cols) {
