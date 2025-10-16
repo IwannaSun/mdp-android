@@ -135,7 +135,7 @@ class MainActivity : ComponentActivity() {
         tvLog = findViewById(R.id.tvLog)
         scrollView = findViewById(R.id.scrollView)
         bottomIcon = findViewById(R.id.bottomIcon)
-//        tvStatus = findViewById(R.id.tvStatus)
+        tvStatus = findViewById(R.id.tvStatus)
         tvRobotStatus = findViewById(R.id.tvRobotStatus)
         paletteObstacleLabel = findViewById(R.id.palette_obstacle_label)
         tvLog.movementMethod = ScrollingMovementMethod()
