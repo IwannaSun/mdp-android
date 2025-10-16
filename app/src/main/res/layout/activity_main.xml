@@ -54,7 +54,7 @@
                 android:layout_width="69dp"
                 android:layout_height="35dp"
                 android:text="Clear"
-                android:textColor="@color/white"
+                android:textColor="@color/black"
                 android:background="@drawable/stoneblock"
                 android:fontFamily="@font/minecraftregular" />
         </LinearLayout>
@@ -437,6 +437,8 @@
                 android:layout_marginStart="8dp"
                 android:text="Bluetooth"
                 android:textStyle="bold"
+                android:textColor="@color/black"
+                android:paddingRight="10dp"
                 android:fontFamily="@font/minecraftbold" />
 
             <Button

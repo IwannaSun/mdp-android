@@ -160,13 +160,13 @@ class MainActivity : ComponentActivity() {
             // Start逻辑
             sendData("START")
             btnStart.text = "Stop"
-            btnStart.setBackgroundColor(Color.RED)
+            btnStart.setBackgroundResource(R.drawable.redstoneblock)
             isStarted = true
         } else {
             // Stop逻辑
             sendData("STOP")
             btnStart.text = "Start"
-            btnStart.setBackgroundColor(Color.parseColor("#4CAF23"))
+            btnStart.setBackgroundResource(R.drawable.grass_block)
             isStarted = false}
         }
 
@@ -939,7 +939,7 @@ class MainActivity : ComponentActivity() {
         if (message.trim().equals("STOP", ignoreCase = true)) {
             runOnUiThread {
                 btnStart.text = "Start"
-                btnStart.setBackgroundColor(Color.parseColor("#4CAF23"))
+                btnStart.setBackgroundResource(R.drawable.redstoneblock)
                 isStarted = false
                 appendLog("[Robot -> AA] Received STOP command, reset button state")
             }
