@@ -540,19 +540,27 @@ class MainActivity : ComponentActivity() {
         val adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, items)
         currentListAdapter = adapter
 
+        // Create and set up the custom dialog view with the ListView
+        val dialogView = layoutInflater.inflate(R.layout.dialog_device_picker, null)
+        val listView = dialogView.findViewById<ListView>(R.id.deviceListView)
+        listView.adapter = adapter
+
         val dialog = AlertDialog.Builder(this)
             .setTitle("Select Bluetooth Device")
-            .setAdapter(adapter) { d, which ->
-                val key = adapter.getItem(which) ?: return@setAdapter
-                val device = discoveredDevices[key] ?: return@setAdapter
-                d.dismiss()
-                // Modified: Check bond state before connecting
-                connectWithBondCheck(device)
-            }
+            .setView(dialogView)
             .setNegativeButton("Close", null)
             .setPositiveButton("Scan", null)
             .setNeutralButton("Stop", null)
             .create()
+
+        // Set click listener for device selection
+        listView.setOnItemClickListener { _, _, position, _ ->
+            val key = adapter.getItem(position) ?: return@setOnItemClickListener
+            val device = discoveredDevices[key] ?: return@setOnItemClickListener
+            dialog.dismiss()
+            // Modified: Check bond state before connecting
+            connectWithBondCheck(device)
+        }
 
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -820,22 +828,7 @@ class MainActivity : ComponentActivity() {
             return null
         }
 
-        // Try direct connection to RFCOMM channel 1 first (which is what RPi expects)
-        try {
-            appendLog("[Conn] Trying direct connection to RFCOMM channel 1...")
-            val m = device.javaClass.getMethod("createRfcommSocket", Int::class.java)
-            val channelSocket = m.invoke(device, 1) as BluetoothSocket
-            withTimeout(timeoutSeconds.seconds) {
-                channelSocket.connect()
-            }
-            appendLog("[Conn] Successfully connected to RFCOMM channel 1")
-            return channelSocket
-        } catch (e: Exception) {
-            appendLog("[Conn] Channel 1 connection failed: ${e.message}")
-            // Continue to other methods if this fails
-        }
-
-        // Try secure connection next
+        // Try secure connection directly
         val secureSocket = try {
             device.createRfcommSocketToServiceRecord(sppUuid)
         } catch (e: Exception) {
@@ -847,6 +840,7 @@ class MainActivity : ComponentActivity() {
             try {
                 appendLog("[Conn] Trying secure connection...")
                 withTimeout(timeoutSeconds.seconds) { secureSocket.connect() }
+                appendLog("[Conn] Successfully connected with secure connection")
                 return secureSocket
             } catch (e: Exception) {
                 appendLog("[Conn] Secure connection failed: ${e.message}")
@@ -854,7 +848,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Try insecure connection
+        // Try insecure connection as fallback
         val insecureSocket = try {
             device.createInsecureRfcommSocketToServiceRecord(sppUuid)
         } catch (e: Exception) {
@@ -866,6 +860,7 @@ class MainActivity : ComponentActivity() {
             try {
                 appendLog("[Conn] Trying insecure connection...")
                 withTimeout(timeoutSeconds.seconds) { insecureSocket.connect() }
+                appendLog("[Conn] Successfully connected with insecure connection")
                 return insecureSocket
             } catch (e: Exception) {
                 appendLog("[Conn] Insecure connection failed: ${e.message}")
@@ -895,38 +890,61 @@ class MainActivity : ComponentActivity() {
         val socket = bluetoothSocket ?: return
         readJob = CoroutineScope(Dispatchers.IO).launch {
             val buffer = ByteArray(1024)
-            var partialMessage = "" // 用于存储不完整的消息
+            val sb = StringBuilder()
+            var lastDataTime = System.currentTimeMillis()
+            val processTimeoutMs = 100L
 
             try {
                 val input = socket.inputStream
                 while (isActive) {
-                    val n = input.read(buffer)
-                    if (n > 0) {
-                        // 将新读取的内容添加到partialMessage
-                        val text = String(buffer, 0, n, Charsets.UTF_8)
-                        partialMessage += text
+                    if (input.available() > 0) {
+                        val n = input.read(buffer)
+                        if (n > 0) {
+                            val text = String(buffer, 0, n, Charsets.UTF_8)
+                            sb.append(text)
+                            lastDataTime = System.currentTimeMillis()
 
-                        // 检查是否包含完整的行（以\n结尾）
-                        while (partialMessage.contains('\n')) {
-                            val lineEndIndex = partialMessage.indexOf('\n')
-                            val completeLine = partialMessage.substring(0, lineEndIndex + 1) // 包含\n
-                            partialMessage = partialMessage.substring(lineEndIndex + 1) // 剩余部分
+                            var idx = sb.indexOf("\n")
+                            while (idx != -1) {
+                                val lineWithNewline = sb.substring(0, idx + 1)
+                                sb.delete(0, idx + 1)
 
-                            // 只处理非空行
-                            if (completeLine.trim().isNotEmpty()) {
+                                // Process message in the main thread
                                 withContext(Dispatchers.Main) {
-                                    processIncomingMessage(completeLine)
+                                    processIncomingMessage(lineWithNewline)
                                 }
+
+                                idx = sb.indexOf("\n")
                             }
+                        } else if (n == -1) {
+                            throw IOException("Stream closed")
                         }
-                    } else if (n < 0) {
-                        throw IOException("Stream closed")
+                    }
+                    // If no new data for a while and we have accumulated text, process it
+                    else if (sb.isNotEmpty() && System.currentTimeMillis() - lastDataTime > processTimeoutMs) {
+                        val accumulatedText = sb.toString()
+                        sb.clear()
+
+                        // Process the accumulated text even without newline
+                        withContext(Dispatchers.Main) {
+                            processIncomingMessage(accumulatedText)
+                        }
+                        lastDataTime = System.currentTimeMillis()
+                    } else {
+                        // Small delay to avoid CPU spinning
+                        delay(10)
                     }
                 }
             } catch (e: IOException) {
                 withContext(Dispatchers.Main) {
                     appendLog("[Conn] Disconnected: ${e.message}")
                     updateStatus("Disconnected - attempting to reconnect...")
+                }
+                closeConnection()
+                startReconnectJob()
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    appendLog("[Conn] Read loop error: ${e.message}")
                 }
                 closeConnection()
                 startReconnectJob()

@@ -11,9 +11,4 @@
         android:layout_height="250dp"
         android:dividerHeight="1dp" />
 
-    <Button
-        android:id="@+id/btnScan"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Scan" />
 </LinearLayout>
